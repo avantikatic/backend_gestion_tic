@@ -42,7 +42,7 @@ COPY . .
 RUN mkdir -p /app/Uploads
 
 # Exponer puerto
-EXPOSE 8007
+EXPOSE 8009
 
 # Comando de inicio
 CMD ["python3", "main.py"]
