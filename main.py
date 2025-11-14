@@ -20,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],  # Permitir todos los encabezados; puedes especificar los encabezados permitidos.
 )
 app.include_router(graph_router)
-app.include_router(tickets_router, prefix="/tickets")
+app.include_router(tickets_router)
 app.include_router(dashboard_router, prefix="/dashboard")
 
 BASE.metadata.create_all(bind=engine)

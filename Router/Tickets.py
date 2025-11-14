@@ -58,20 +58,18 @@ def obtener_macroprocesos(db: Session = Depends(get_db)):
     response = Tickets(db).obtener_macroprocesos()
     return response
 
+@tickets_router.post('/obtener_tipo_nivel', tags=["TICKETS"], response_model=dict)
+def obtener_tipo_nivel(db: Session = Depends(get_db)):
+    """Obtiene todos los tipos de nivel disponibles"""
+    response = Tickets(db).obtener_tipo_nivel()
+    return response
+
 @tickets_router.post('/filtrar_tickets', tags=["TICKETS"], response_model=dict)
 @http_decorator
 def filtrar_tickets(request: Request, db: Session = Depends(get_db)):
     """Filtra tickets con parámetros específicos usando los campos reales de la tabla"""
     data = getattr(request.state, "json_data", {})
     response = Tickets(db).filtrar_tickets(data)
-    return response
-
-@tickets_router.post('/actualizar_ticket', tags=["TICKETS"], response_model=dict)
-@http_decorator
-def actualizar_ticket(request: Request, db: Session = Depends(get_db)):
-    """Actualiza campos específicos de un ticket en la tabla intranet_correos_microsoft"""
-    data = getattr(request.state, "json_data", {})
-    response = Tickets(db).actualizar_ticket(data)
     return response
 
 # Endpoints para respuestas automáticas y comunicación

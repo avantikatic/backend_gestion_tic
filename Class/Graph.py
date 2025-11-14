@@ -725,6 +725,7 @@ class Graph:
                 'macroproceso': 'macroproceso',
                 'asignado': 'asignado',
                 'fecha_vencimiento': 'fecha_vencimiento',
+                'nivel_id': 'nivel_id',
                 'sla': 'sla'
             }
             
@@ -737,7 +738,7 @@ class Graph:
             # Preparar datos de actualización
             # Convertir valor vacío a None para campos numéricos
             if valor == "" or valor == "null":
-                if campo_bd in ['prioridad', 'tipo_soporte', 'tipo_ticket', 'macroproceso', 'asignado', 'sla']:
+                if campo_bd in ['prioridad', 'tipo_soporte', 'tipo_ticket', 'macroproceso', 'asignado', 'sla', 'nivel_id']:
                     valor = None
                 elif campo_bd == 'fecha_vencimiento':
                     valor = None

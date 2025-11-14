@@ -204,6 +204,19 @@ class Tickets:
             print(f"Error obteniendo macroprocesos: {e}")
             return self.tools.output(500, "Error obteniendo macroprocesos.", {})
 
+    def obtener_tipo_nivel(self):
+        """
+        Obtiene todos los tipos de nivel disponibles
+        """
+        try:
+            tipos_nivel = self.querys.obtener_tipo_nivel()
+            
+            return self.tools.output(200, "Tipos de nivel obtenidos.", tipos_nivel)
+                
+        except Exception as e:
+            print(f"Error obteniendo tipos de nivel: {e}")
+            return self.tools.output(500, "Error obteniendo tipos de nivel.", {})
+
     # Función para filtrar tickets con parámetros específicos (Backend Filtering)
     def filtrar_tickets(self, data: dict):
         """
@@ -266,7 +279,8 @@ class Tickets:
                 'macroproceso': 'macroproceso',
                 'asignado': 'asignado',
                 'fecha_vencimiento': 'fecha_vencimiento',
-                'sla': 'sla'
+                'sla': 'sla',
+                'nivel_id': 'nivel_id'
             }
             
             campo_bd = mapeo_campos.get(campo, campo)
@@ -278,7 +292,7 @@ class Tickets:
             # Preparar datos de actualización
             # Convertir valor vacío a None para campos numéricos
             if valor == "" or valor == "null":
-                if campo_bd in ['prioridad', 'tipo_soporte', 'tipo_ticket', 'macroproceso', 'asignado', 'sla']:
+                if campo_bd in ['prioridad', 'tipo_soporte', 'tipo_ticket', 'macroproceso', 'asignado', 'sla', 'nivel_id']:
                     valor = None
                 elif campo_bd == 'fecha_vencimiento':
                     valor = None

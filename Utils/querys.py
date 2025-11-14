@@ -10,6 +10,7 @@ from Models.IntranetTipoPrioridadModel import IntranetTipoPrioridadModel
 from Models.IntranetTipoSoporteModel import IntranetTipoSoporteModel
 from Models.IntranetTipoTicketModel import IntranetTipoTicketModel
 from Models.IntranetPerfilesMacroprocesoModel import IntranetPerfilesMacroprocesoModel
+from Models.IntranetTipoNivelModel import IntranetTipoNivelModel
 
 import hashlib
 
@@ -673,6 +674,22 @@ class Querys:
             print(f"Error obteniendo macroprocesos: {e}")
             return self.tools.output(500, "Error obteniendo macroprocesos.", {})
 
+    # Query para obtener tipos de nivel
+    def obtener_tipo_nivel(self):
+        """
+        Obtiene todos los tipos de nivel disponibles desde IntranetTipoNivel
+        """
+        try:
+            tipos_nivel = self.db.query(IntranetTipoNivelModel).filter(
+                IntranetTipoNivelModel.estado == 1
+            ).all()
+            
+            return [{'id': tipo.id, 'nombre': tipo.nombre} for tipo in tipos_nivel]
+            
+        except Exception as e:
+            print(f"Error obteniendo tipos de nivel: {e}")
+            return []
+
     # Query para filtrar tickets con optimización usando IDs exactos
     def filtrar_tickets_optimizado(self, filtros: dict):
         """
@@ -710,6 +727,7 @@ class Querys:
                 icm.macroproceso,
                 icm.fecha_vencimiento,
                 icm.sla,
+                icm.nivel_id,
                 
                 -- JOINs para obtener nombres
                 itp.nombre as prioridad_nombre,
@@ -819,32 +837,37 @@ class Querys:
             tickets = []
             
             for row in result:
+                # Convertir row a diccionario usando nombres de columnas
+                row_dict = dict(row._mapping)
+                
                 ticket_dict = {
-                    'id': row[0],
-                    'message_id': row[1], 
-                    'subject': row[2],
-                    'from_name': row[3],
-                    'from_email': row[4],
-                    'body': row[5],
-                    'received_at': row[6].strftime('%Y-%m-%d %H:%M:%S') if row[6] else None,
-                    'created_at': row[7].strftime('%Y-%m-%d') if row[7] else None,
-                    'updated_at': row[8].strftime('%Y-%m-%d %H:%M:%S') if row[8] else None,
-                    'ticket_id': row[0],  # Usar ID como ticket_id
-                    'ticket': row[9],
-                    'estado': row[10],
-                    'asignado': row[11],
-                    'prioridad': row[12],
-                    'tipo_soporte': row[13],
-                    'tipo_ticket': row[14],
-                    'macroproceso': row[15],
-                    'fecha_vencimiento': row[16].strftime('%Y-%m-%d') if row[16] else None,
-                    'sla': row[17],
-                    'prioridad_nombre': row[18],
-                    'tipo_soporte_nombre': row[19],
-                    'tipo_ticket_nombre': row[20],
-                    'macroproceso_nombre': row[21],
-                    'asignadoNombre': row[22],
-                    'estadoTicket': row[23]  # Nombre del estado mapeado
+                    'id': row_dict.get('id'),
+                    'message_id': row_dict.get('message_id'), 
+                    'subject': row_dict.get('subject'),
+                    'from_name': row_dict.get('from_name'),
+                    'from_email': row_dict.get('from_email'),
+                    'body': row_dict.get('body_content'),
+                    'received_at': row_dict.get('received_date').strftime('%Y-%m-%d %H:%M:%S') if row_dict.get('received_date') else None,
+                    'created_at': row_dict.get('created_at').strftime('%Y-%m-%d') if row_dict.get('created_at') else None,
+                    'updated_at': row_dict.get('updated_at').strftime('%Y-%m-%d %H:%M:%S') if row_dict.get('updated_at') else None,
+                    'ticket_id': row_dict.get('id'),
+                    'ticket_id_display': f"TCK-{row_dict.get('id'):04d}",
+                    'ticket': row_dict.get('ticket'),
+                    'estado': row_dict.get('estado'),
+                    'asignado': row_dict.get('asignado'),
+                    'prioridad': row_dict.get('prioridad'),
+                    'tipo_soporte': row_dict.get('tipo_soporte'),
+                    'tipo_ticket': row_dict.get('tipo_ticket'),
+                    'macroproceso': row_dict.get('macroproceso'),
+                    'fecha_vencimiento': row_dict.get('fecha_vencimiento').strftime('%Y-%m-%d') if row_dict.get('fecha_vencimiento') else None,
+                    'sla': row_dict.get('sla'),
+                    'nivel_id': row_dict.get('nivel_id'),
+                    'prioridad_nombre': row_dict.get('prioridad_nombre'),
+                    'tipo_soporte_nombre': row_dict.get('tipo_soporte_nombre'),
+                    'tipo_ticket_nombre': row_dict.get('tipo_ticket_nombre'),
+                    'macroproceso_nombre': row_dict.get('macroproceso_nombre'),
+                    'asignadoNombre': row_dict.get('asignado_nombre'),
+                    'estadoTicket': row_dict.get('estado_nombre')
                 }
                 tickets.append(ticket_dict)
             
