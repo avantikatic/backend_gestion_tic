@@ -28,6 +28,7 @@ class IntranetCorreosMicrosoftModel(BASE):
     fecha_vencimiento = Column(Date, default=None)
     sla = Column(Integer, default=0)
     nivel_id = Column(BigInteger, default=None)
+    fecha_cierre = Column(DateTime, default=None)
     activo = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -63,6 +64,7 @@ class IntranetCorreosMicrosoftModel(BASE):
         self.fecha_vencimiento = data.get('fecha_vencimiento', None)
         self.sla = data.get('sla', None)
         self.nivel_id = data.get('nivel_id', None)
+        self.fecha_cierre = data.get('fecha_cierre', None)
 
     def to_dict(self):
         """Convierte el modelo a diccionario para serialización JSON"""
@@ -90,6 +92,7 @@ class IntranetCorreosMicrosoftModel(BASE):
             'fecha_vencimiento': self.fecha_vencimiento,
             'sla': self.sla,
             'nivel_id': self.nivel_id,
+            'fecha_cierre': self.fecha_cierre.isoformat() if self.fecha_cierre else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -116,6 +119,7 @@ class IntranetCorreosMicrosoftModel(BASE):
             'fecha_vencimiento': self.fecha_vencimiento.isoformat() if self.fecha_vencimiento else None,
             'sla': self.sla,
             'nivel_id': self.nivel_id,
+            'fecha_cierre': self.fecha_cierre.isoformat() if self.fecha_cierre else None,
             'hasAttachments': bool(self.has_attachments),
             'attachmentsCount': self.attachments_count,
             'created_at': self.created_at.date().isoformat() if self.created_at else None,

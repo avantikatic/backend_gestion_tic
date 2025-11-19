@@ -41,5 +41,68 @@ class Dashboard:
         except Exception as e:
             print(f"Error obteniendo métricas del dashboard: {e}")
             return self.tools.output(500, "Error obteniendo métricas del dashboard.", {})
-        
     
+    # Función para obtener indicadores de gestión mensual
+    def obtener_indicadores_gestion(self, data=None):
+        """
+        Obtiene los indicadores de gestión por mes:
+        - Tickets completados
+        - Tickets cerrados oportunamente (fecha_cierre <= fecha_vencimiento)
+        - Tickets cerrados no oportunamente (fecha_cierre > fecha_vencimiento)
+        - Porcentaje de cumplimiento
+        """
+        try:
+            filtros = data or {}
+            anio = filtros.get('anio', datetime.now().year)
+            
+            # Obtener indicadores usando query
+            indicadores = self.querys.obtener_indicadores_gestion(anio)
+            
+            return self.tools.output(200, "Indicadores de gestión obtenidos exitosamente.", indicadores)
+                
+        except Exception as e:
+            print(f"Error obteniendo indicadores de gestión: {e}")
+            return self.tools.output(500, "Error obteniendo indicadores de gestión.", {})
+    
+    # Función para obtener observación de un mes
+    def obtener_observacion_mes(self, data=None):
+        """
+        Obtiene la observación de un mes específico
+        """
+        try:
+            filtros = data or {}
+            anio = filtros.get('anio')
+            mes = filtros.get('mes')
+            
+            if not anio or not mes:
+                return self.tools.output(400, "Año y mes son requeridos.", {})
+            
+            observacion = self.querys.obtener_observacion_mes(anio, mes)
+            
+            return self.tools.output(200, "Observación obtenida exitosamente.", observacion or {})
+                
+        except Exception as e:
+            print(f"Error obteniendo observación del mes: {e}")
+            return self.tools.output(500, "Error obteniendo observación del mes.", {})
+    
+    # Función para guardar observación de un mes
+    def guardar_observacion_mes(self, data=None):
+        """
+        Guarda o actualiza la observación de un mes específico
+        """
+        try:
+            filtros = data or {}
+            anio = filtros.get('anio')
+            mes = filtros.get('mes')
+            observaciones = filtros.get('observaciones', '')
+            
+            if not anio or not mes:
+                return self.tools.output(400, "Año y mes son requeridos.", {})
+            
+            observacion = self.querys.guardar_observacion_mes(anio, mes, observaciones)
+            
+            return self.tools.output(200, "Observación guardada exitosamente.", observacion)
+                
+        except Exception as e:
+            print(f"Error guardando observación del mes: {e}")
+            return self.tools.output(500, "Error guardando observación del mes.", {})

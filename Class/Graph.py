@@ -745,6 +745,10 @@ class Graph:
             
             datos_actualizacion = {campo_bd: valor}
             
+            # Si el campo es estado y el nuevo valor es 3 (Completado), establecer fecha_cierre
+            if campo_bd == 'estado' and valor == 3:
+                datos_actualizacion['fecha_cierre'] = datetime.now()
+            
             # Si tenemos ticket_id, buscar el message_id
             if ticket_id and not message_id:
                 ticket = self.querys.obtener_ticket_por_id(ticket_id)
