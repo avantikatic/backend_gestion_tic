@@ -1,5 +1,5 @@
 from Utils.tools import Tools, CustomException
-from sqlalchemy import text, func, case
+from sqlalchemy import text, func, case, extract, and_, or_
 from datetime import datetime, date
 from Models.IntranetGraphTokenModel import IntranetGraphTokenModel as TokenModel
 from Models.IntranetCorreosMicrosoftModel import IntranetCorreosMicrosoftModel as CorreosMicrosoftModel
@@ -1315,253 +1315,173 @@ class Querys:
         except Exception as e:
             print(f"Error obteniendo métricas del dashboard: {e}")
             raise CustomException(f"Error obteniendo métricas: {str(e)}")
-    
+
+    # query para obtener indicadores de gestión mensual
     def obtener_indicadores_gestion(self, anio):
         """
-        Obtiene indicadores de gestión mensual:
+        Obtiene indicadores de gestión mensual optimizado con SQLAlchemy ORM.
         - Total de tickets completados por mes
         - Tickets cerrados oportunamente (fecha_cierre <= fecha_vencimiento)
         - Tickets cerrados no oportunamente (fecha_cierre > fecha_vencimiento)
-        - Porcentaje de cumplimiento
-        
+        - Tickets pendientes (abiertos/en proceso)
+        - Tickets ingresados
+        - Tickets abiertos/en proceso al final del mes
+        - Porcentaje de cumplimiento y acumulado
         Args:
             anio: Año para el cual obtener los indicadores
         """
         try:
-            
-            # Query principal: tickets completados (estado = 3)
-            query_completados = text("""
-            SELECT 
-                MONTH(fecha_cierre) as mes,
-                COUNT(*) as total_completados,
-                SUM(CASE 
-                    WHEN fecha_vencimiento IS NOT NULL AND fecha_cierre <= fecha_vencimiento THEN 1 
-                    ELSE 0 
-                END) as oportunos,
-                SUM(CASE 
-                    WHEN fecha_vencimiento IS NOT NULL AND fecha_cierre > fecha_vencimiento THEN 1 
-                    ELSE 0 
-                END) as no_oportunos,
-                SUM(CASE 
-                    WHEN fecha_vencimiento IS NULL THEN 1 
-                    ELSE 0 
-                END) as sin_fecha_vencimiento
-            FROM intranet_correos_microsoft
-            WHERE 
-                activo = 1 
-                AND ticket = 1
-                AND estado = 3
-                AND fecha_cierre IS NOT NULL
-                AND YEAR(fecha_cierre) = :anio
-            GROUP BY MONTH(fecha_cierre)
-            ORDER BY MONTH(fecha_cierre)
-            """)
-            
-            # Query adicional: tickets abiertos y en proceso (estado = 1 o 2) con fecha_vencimiento en el año
-            query_pendientes = text("""
-            SELECT 
-                MONTH(fecha_vencimiento) as mes,
-                COUNT(*) as total_pendientes
-            FROM intranet_correos_microsoft
-            WHERE 
-                activo = 1 
-                AND ticket = 1
-                AND estado IN (1, 2)
-                AND fecha_vencimiento IS NOT NULL
-                AND YEAR(fecha_vencimiento) = :anio
-            GROUP BY MONTH(fecha_vencimiento)
-            ORDER BY MONTH(fecha_vencimiento)
-            """)
-            
-            # Query adicional: tickets que ingresaron en el mes (basado en received_date)
-            query_ingresados = text("""
-            SELECT 
-                MONTH(received_date) as mes,
-                COUNT(*) as total_ingresados
-            FROM intranet_correos_microsoft
-            WHERE 
-                activo = 1 
-                AND ticket = 1
-                AND received_date IS NOT NULL
-                AND YEAR(received_date) = :anio
-            GROUP BY MONTH(received_date)
-            ORDER BY MONTH(received_date)
-            """)
-            
-            # Query adicional: contar tickets abiertos/en proceso al final del mes
-            query_abiertos_mes = text("""
-            SELECT 
-                MONTH(fecha_vencimiento) as mes,
-                COUNT(*) as total_abiertos
-            FROM intranet_correos_microsoft
-            WHERE 
-                activo = 1 
-                AND ticket = 1
-                AND estado IN (1, 2)
-                AND fecha_vencimiento IS NOT NULL
-                AND YEAR(fecha_vencimiento) = :anio
-            GROUP BY MONTH(fecha_vencimiento)
-            ORDER BY MONTH(fecha_vencimiento)
-            """)
-            
-            # Ejecutar primer query y consumir todos los resultados
-            result_completados = self.db.execute(query_completados, {'anio': anio})
-            
-            # Inicializar array de 12 meses
-            meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-            
+            # CorreosMicrosoftModel ya está importado a nivel de módulo
+            meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+            # 1. Tickets completados por mes
+            completados_q = self.db.query(
+                extract('month', CorreosMicrosoftModel.fecha_cierre).label('mes'),
+                func.count().label('total_completados'),
+                func.sum(case(
+                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, CorreosMicrosoftModel.fecha_cierre <= CorreosMicrosoftModel.fecha_vencimiento), 1),
+                    else_=0)).label('oportunos'),
+                func.sum(case(
+                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, CorreosMicrosoftModel.fecha_cierre > CorreosMicrosoftModel.fecha_vencimiento), 1),
+                    else_=0)).label('no_oportunos'),
+                func.sum(case(
+                    (CorreosMicrosoftModel.fecha_vencimiento == None, 1),
+                    else_=0)).label('sin_fecha_vencimiento')
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.estado == 3,
+                CorreosMicrosoftModel.fecha_cierre != None,
+                func.extract('year', CorreosMicrosoftModel.fecha_cierre) == anio
+            ).group_by(extract('month', CorreosMicrosoftModel.fecha_cierre))
+
+            completados = {int(row.mes): {
+                'total_completados': row.total_completados,
+                'oportunos': row.oportunos,
+                'no_oportunos': row.no_oportunos,
+                'sin_fecha_vencimiento': row.sin_fecha_vencimiento
+            } for row in completados_q.all()}
+
+            # 2. Tickets pendientes (abiertos/en proceso) por mes (fecha_vencimiento)
+            pendientes_q = self.db.query(
+                extract('month', CorreosMicrosoftModel.fecha_vencimiento).label('mes'),
+                func.count().label('total_pendientes')
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.estado.in_([1, 2]),
+                CorreosMicrosoftModel.fecha_vencimiento != None,
+                func.extract('year', CorreosMicrosoftModel.fecha_vencimiento) == anio
+            ).group_by(extract('month', CorreosMicrosoftModel.fecha_vencimiento))
+
+            pendientes = {int(row.mes): row.total_pendientes for row in pendientes_q.all()}
+
+            # 3. Tickets ingresados por mes (received_date)
+            ingresados_q = self.db.query(
+                extract('month', CorreosMicrosoftModel.received_date).label('mes'),
+                func.count().label('total_ingresados')
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.received_date != None,
+                func.extract('year', CorreosMicrosoftModel.received_date) == anio
+            ).group_by(extract('month', CorreosMicrosoftModel.received_date))
+
+            ingresados = {int(row.mes): row.total_ingresados for row in ingresados_q.all()}
+
+            # 4. Tickets abiertos/en proceso al final del mes (fecha_vencimiento)
+            abiertos_q = self.db.query(
+                extract('month', CorreosMicrosoftModel.fecha_vencimiento).label('mes'),
+                func.count().label('total_abiertos')
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.estado.in_([1, 2]),
+                CorreosMicrosoftModel.fecha_vencimiento != None,
+                func.extract('year', CorreosMicrosoftModel.fecha_vencimiento) == anio
+            ).group_by(extract('month', CorreosMicrosoftModel.fecha_vencimiento))
+
+            abiertos = {int(row.mes): row.total_abiertos for row in abiertos_q.all()}
+
+            # 5. Obtener porcentaje_meta desde dbo.consecutivos (tipo='META')
+            porcentaje_meta = 0
+            try:
+                sql_meta = "SELECT siguiente FROM dbo.consecutivos WHERE tipo = 'META';"
+                result_meta = self.db.execute(text(sql_meta)).fetchone()
+                if result_meta and result_meta[0] is not None:
+                    porcentaje_meta = float(result_meta[0])
+            except Exception as e:
+                print(f"Error obteniendo porcentaje_meta: {e}")
+                porcentaje_meta = None
+
+            # 6. Procesamiento y armado de indicadores
             indicadores = []
-            datos_por_mes = {}
-            pendientes_por_mes = {}
-            
-            # Procesar resultados de tickets completados usando nombres de columnas
-            for row in result_completados:
-                row_dict = dict(row._mapping)
-                mes_num = row_dict['mes']
-                total_comp = row_dict['total_completados']
-                oportunos = row_dict['oportunos']
-                no_oportunos = row_dict['no_oportunos']
-                sin_fecha = row_dict['sin_fecha_vencimiento']
-                
-                datos_por_mes[mes_num] = {
-                    'total_completados': total_comp,
-                    'oportunos': oportunos,
-                    'no_oportunos': no_oportunos,
-                    'sin_fecha_vencimiento': sin_fecha
-                }
-            
-            # Cerrar el primer result antes de ejecutar el segundo query
-            result_completados.close()
-            
-            # Ahora ejecutar el segundo query
-            result_pendientes = self.db.execute(query_pendientes, {'anio': anio})
-            
-            # Procesar resultados de tickets pendientes (abiertos y en proceso)
-            for row in result_pendientes:
-                row_dict = dict(row._mapping)
-                mes_num = row_dict['mes']
-                total_pend = row_dict['total_pendientes']
-                
-                pendientes_por_mes[mes_num] = total_pend
-            
-            # Cerrar el segundo result
-            result_pendientes.close()
-            
-            # Ejecutar tercer query: tickets ingresados
-            result_ingresados = self.db.execute(query_ingresados, {'anio': anio})
-            
-            # Procesar resultados de tickets ingresados
-            ingresados_por_mes = {}
-            for row in result_ingresados:
-                row_dict = dict(row._mapping)
-                mes_num = row_dict['mes']
-                total_ing = row_dict['total_ingresados']
-                
-                ingresados_por_mes[mes_num] = total_ing
-            
-            # Cerrar el tercer result
-            result_ingresados.close()
-            
-            # Ejecutar cuarto query: tickets abiertos/en proceso por mes
-            result_abiertos = self.db.execute(query_abiertos_mes, {'anio': anio})
-            
-            # Procesar resultados de tickets abiertos
-            abiertos_por_mes = {}
-            for row in result_abiertos:
-                row_dict = dict(row._mapping)
-                mes_num = row_dict['mes']
-                total_ab = row_dict['total_abiertos']
-                
-                abiertos_por_mes[mes_num] = total_ab
-            
-            # Cerrar el cuarto result
-            result_abiertos.close()
-            
-            # Crear array con todos los meses
             total_oportunos_acumulado = 0
             total_completados_acumulado = 0
             total_no_oportunos_acumulado = 0
             total_sin_respuesta_acumulado = 0
             total_pendientes_acumulado = 0
-            total_a_vencer_acumulado = 0  # Total de tickets a vencer (completados + pendientes)
-            total_ingresados_acumulado = 0  # Total de tickets ingresados en el año
-            
+            total_a_vencer_acumulado = 0
+            total_ingresados_acumulado = 0
+
             for i in range(1, 13):
-                if i in datos_por_mes:
-                    datos = datos_por_mes[i]
+                datos = completados.get(i)
+                pendientes_mes = pendientes.get(i, 0)
+                ingresados_mes = ingresados.get(i, 0)
+                abiertos_mes = abiertos.get(i, 0)
+
+                if datos:
                     total_completados_acumulado += datos['total_completados']
                     total_oportunos_acumulado += datos['oportunos']
                     total_no_oportunos_acumulado += datos['no_oportunos']
-                    
-                    # Obtener tickets pendientes del mes (estado 1 y 2)
-                    pendientes_mes = pendientes_por_mes.get(i, 0)
                     total_pendientes_acumulado += pendientes_mes
-                    
-                    # Obtener tickets ingresados en el mes
-                    ingresados_mes = ingresados_por_mes.get(i, 0)
                     total_ingresados_acumulado += ingresados_mes
-                    
-                    # Obtener tickets abiertos/en proceso del mes
-                    abiertos_mes = abiertos_por_mes.get(i, 0)
-                    
-                    # Total a vencer en el mes = completados + pendientes
                     total_a_vencer_mes = datos['total_completados'] + pendientes_mes
                     total_a_vencer_acumulado += total_a_vencer_mes
-                    
-                    # Calcular sin respuesta: Total - Oportunos - No Oportunos + Pendientes
                     sin_respuesta = datos['total_completados'] - datos['oportunos'] - datos['no_oportunos'] + pendientes_mes
                     total_sin_respuesta_acumulado += sin_respuesta
-                    
                     porcentaje = round((datos['oportunos'] / datos['total_completados'] * 100), 2) if datos['total_completados'] > 0 else 0
-                    # % Acumulado año = suma oportunos / suma total a vencer
                     porcentaje_acumulado = round((total_oportunos_acumulado / total_a_vencer_acumulado * 100), 2) if total_a_vencer_acumulado > 0 else 0
-                    
                     indicadores.append({
                         'mes': meses[i-1],
                         'mes_numero': i,
-                        'total_completados': total_a_vencer_mes,  # Mostrar el total a vencer (completados + pendientes)
+                        'total_completados': total_a_vencer_mes,
                         'oportunos': datos['oportunos'],
                         'no_oportunos': datos['no_oportunos'],
                         'sin_respuesta': sin_respuesta,
                         'total_ingresados': ingresados_mes,
                         'tickets_abiertos': abiertos_mes,
                         'porcentaje': porcentaje,
-                        'porcentaje_acumulado': porcentaje_acumulado
+                        'porcentaje_acumulado': porcentaje_acumulado,
+                        'porcentaje_meta': porcentaje_meta
                     })
                 else:
-                    # Mes sin datos completados, pero puede tener pendientes e ingresados
-                    pendientes_mes = pendientes_por_mes.get(i, 0)
-                    ingresados_mes = ingresados_por_mes.get(i, 0)
-                    abiertos_mes = abiertos_por_mes.get(i, 0)
                     total_pendientes_acumulado += pendientes_mes
                     total_ingresados_acumulado += ingresados_mes
                     total_a_vencer_acumulado += pendientes_mes
-                    
                     if pendientes_mes > 0:
                         total_sin_respuesta_acumulado += pendientes_mes
-                    
-                    # % Acumulado año = suma oportunos / suma total a vencer
                     porcentaje_acumulado = round((total_oportunos_acumulado / total_a_vencer_acumulado * 100), 2) if total_a_vencer_acumulado > 0 else 0
-                    
                     indicadores.append({
                         'mes': meses[i-1],
                         'mes_numero': i,
-                        'total_completados': pendientes_mes,  # Mostrar el total a vencer (solo pendientes)
+                        'total_completados': pendientes_mes,
                         'oportunos': 0,
                         'no_oportunos': 0,
                         'sin_respuesta': pendientes_mes,
                         'total_ingresados': ingresados_mes,
                         'tickets_abiertos': abiertos_mes,
                         'porcentaje': 0,
-                        'porcentaje_acumulado': porcentaje_acumulado
+                        'porcentaje_acumulado': porcentaje_acumulado,
+                        'porcentaje_meta': porcentaje_meta
                     })
-            
+
             return {
                 'anio': anio,
                 'indicadores': indicadores,
                 'totales': {
-                    'total_completados': total_a_vencer_acumulado,  # Total a vencer del año
+                    'total_completados': total_a_vencer_acumulado,
                     'oportunos': total_oportunos_acumulado,
                     'no_oportunos': total_no_oportunos_acumulado,
                     'sin_respuesta': total_sin_respuesta_acumulado,
@@ -1569,7 +1489,6 @@ class Querys:
                     'porcentaje_global': round((total_oportunos_acumulado / total_a_vencer_acumulado * 100), 2) if total_a_vencer_acumulado > 0 else 0
                 }
             }
-            
         except Exception as e:
             print(f"Error obteniendo indicadores de gestión: {e}")
             raise CustomException(f"Error obteniendo indicadores de gestión: {str(e)}")
