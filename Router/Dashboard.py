@@ -37,3 +37,19 @@ def guardar_observacion_mes(request: Request, db: Session = Depends(get_db)):
     data = getattr(request.state, "json_data", {})
     response = Dashboard(db).guardar_observacion_mes(data)
     return response
+
+@dashboard_router.post('/obtener_analisis_causas', tags=["DASHBOARD"], response_model=dict)
+@http_decorator
+def obtener_analisis_causas(request: Request, db: Session = Depends(get_db)):
+    """Obtiene todos los análisis de causas y acciones de un año específico"""
+    data = getattr(request.state, "json_data", {})
+    response = Dashboard(db).obtener_analisis_causas(data)
+    return response
+
+@dashboard_router.post('/guardar_analisis_causas', tags=["DASHBOARD"], response_model=dict)
+@http_decorator
+def guardar_analisis_causas(request: Request, db: Session = Depends(get_db)):
+    """Guarda o actualiza un análisis de causas y acciones. Valida que no exista otro registro con el mismo año y mes."""
+    data = getattr(request.state, "json_data", {})
+    response = Dashboard(db).guardar_analisis_causas(data)
+    return response

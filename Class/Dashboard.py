@@ -106,3 +106,64 @@ class Dashboard:
         except Exception as e:
             print(f"Error guardando observación del mes: {e}")
             return self.tools.output(500, "Error guardando observación del mes.", {})
+    
+    # Función para obtener análisis de causas de un año
+    def obtener_analisis_causas(self, data=None):
+        """
+        Obtiene todos los análisis de causas y acciones de un año específico
+        """
+        try:
+            filtros = data or {}
+            anio = filtros.get('anio')
+            
+            if not anio:
+                return self.tools.output(400, "Año es requerido.", {})
+            
+            analisis = self.querys.obtener_analisis_causas(anio)
+            
+            return self.tools.output(200, "Análisis de causas obtenidos exitosamente.", analisis)
+                
+        except Exception as e:
+            print(f"Error obteniendo análisis de causas: {e}")
+            return self.tools.output(500, "Error obteniendo análisis de causas.", {})
+    
+    # Función para guardar análisis de causas
+    def guardar_analisis_causas(self, data=None):
+        """
+        Guarda o actualiza un análisis de causas y acciones.
+        Valida que no exista otro registro con el mismo año y mes.
+        """
+        try:
+            filtros = data or {}
+            id_analisis = filtros.get('id')
+            anio = filtros.get('anio')
+            mes = filtros.get('mes')
+            analisis = filtros.get('analisis', '')
+            acciones = filtros.get('acciones', '')
+            responsable = filtros.get('responsable', '')
+            fecha_compromiso = filtros.get('fecha_compromiso')
+            seguimiento = filtros.get('seguimiento', '')
+            
+            if not anio or not mes:
+                return self.tools.output(400, "Año y mes son requeridos.", {})
+            
+            # Validar que mes esté entre 1 y 12
+            if not isinstance(mes, int) or mes < 1 or mes > 12:
+                return self.tools.output(400, "El mes debe ser un número entre 1 y 12.", {})
+            
+            # Si no hay ID (nuevo registro), validar que no exista año+mes
+            if not id_analisis:
+                existe = self.querys.verificar_analisis_existe(anio, mes)
+                if existe:
+                    return self.tools.output(400, f"Ya existe un análisis para el mes {mes} del año {anio}.", {})
+            
+            resultado = self.querys.guardar_analisis_causas(
+                id_analisis, anio, mes, analisis, acciones, 
+                responsable, fecha_compromiso, seguimiento
+            )
+            
+            return self.tools.output(200, "Análisis de causas guardado exitosamente.", resultado)
+                
+        except Exception as e:
+            print(f"Error guardando análisis de causas: {e}")
+            return self.tools.output(500, "Error guardando análisis de causas.", {})

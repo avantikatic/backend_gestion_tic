@@ -12,6 +12,7 @@ from Models.IntranetTipoTicketModel import IntranetTipoTicketModel
 from Models.IntranetPerfilesMacroprocesoModel import IntranetPerfilesMacroprocesoModel
 from Models.IntranetTipoNivelModel import IntranetTipoNivelModel
 from Models.IntranetObservacionesInformeGestionModel import IntranetObservacionesInformeGestionModel
+from Models.IntranetCausasInformeGestionModel import IntranetCausasInformeGestion
 
 import hashlib
 
@@ -1547,3 +1548,85 @@ class Querys:
             print(f"Error guardando observación del mes: {e}")
             raise CustomException(f"Error guardando observación: {str(e)}")
 
+    # Query para obtener análisis de causas de un año
+    def obtener_analisis_causas(self, anio):
+        """
+        Obtiene todos los análisis de causas y acciones de un año específico
+        """
+        try:
+            analisis = self.db.query(IntranetCausasInformeGestion).filter(
+                IntranetCausasInformeGestion.anio == anio,
+                IntranetCausasInformeGestion.estado == 1
+            ).order_by(
+                IntranetCausasInformeGestion.mes.asc()
+            ).all()
+            
+            return [a.to_dict() for a in analisis] if analisis else []
+            
+        except Exception as e:
+            print(f"Error obteniendo análisis de causas: {e}")
+            return []
+    
+    # Query para verificar si existe un análisis para año+mes
+    def verificar_analisis_existe(self, anio, mes):
+        """
+        Verifica si ya existe un análisis para el año y mes especificados
+        """
+        try:
+            existe = self.db.query(IntranetCausasInformeGestion).filter(
+                IntranetCausasInformeGestion.anio == anio,
+                IntranetCausasInformeGestion.mes == mes,
+                IntranetCausasInformeGestion.estado == 1
+            ).first()
+            
+            return existe is not None
+            
+        except Exception as e:
+            print(f"Error verificando existencia de análisis: {e}")
+            return False
+    
+    # Query para guardar o actualizar análisis de causas
+    def guardar_analisis_causas(self, id_analisis, anio, mes, analisis, acciones, responsable, fecha_compromiso, seguimiento):
+        """
+        Guarda o actualiza un análisis de causas y acciones
+        """
+        try:
+            if id_analisis:
+                # Actualizar existente
+                analisis_existente = self.db.query(IntranetCausasInformeGestion).filter(
+                    IntranetCausasInformeGestion.id == id_analisis,
+                    IntranetCausasInformeGestion.estado == 1
+                ).first()
+                
+                if not analisis_existente:
+                    raise CustomException("Análisis no encontrado")
+                
+                analisis_existente.analisis = analisis
+                analisis_existente.acciones = acciones
+                analisis_existente.responsable = responsable
+                analisis_existente.fecha_compromiso = fecha_compromiso
+                analisis_existente.seguimiento = seguimiento
+                
+                self.db.commit()
+                return analisis_existente.to_dict()
+            else:
+                # Crear nuevo
+                nuevo_analisis = IntranetCausasInformeGestion(
+                    anio=anio,
+                    mes=mes,
+                    analisis=analisis,
+                    acciones=acciones,
+                    responsable=responsable,
+                    fecha_compromiso=fecha_compromiso,
+                    seguimiento=seguimiento,
+                    estado=1
+                )
+                self.db.add(nuevo_analisis)
+                self.db.commit()
+                self.db.refresh(nuevo_analisis)
+                return nuevo_analisis.to_dict()
+                
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error guardando análisis de causas: {e}")
+            raise CustomException(f"Error guardando análisis de causas: {str(e)}")
