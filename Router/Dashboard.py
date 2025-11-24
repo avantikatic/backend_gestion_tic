@@ -53,3 +53,28 @@ def guardar_analisis_causas(request: Request, db: Session = Depends(get_db)):
     data = getattr(request.state, "json_data", {})
     response = Dashboard(db).guardar_analisis_causas(data)
     return response
+
+@dashboard_router.post('/obtener_tickets_periodo', tags=["DASHBOARD"], response_model=dict)
+@http_decorator
+def obtener_tickets_periodo(request: Request, db: Session = Depends(get_db)):
+    """Obtiene los tickets del periodo especificado (año y mes)"""
+    data = getattr(request.state, "json_data", {})
+    response = Dashboard(db).obtener_tickets_periodo(data)
+    return response
+
+@dashboard_router.post('/obtener_anios', tags=["DASHBOARD"], response_model=dict)
+@http_decorator
+def obtener_anios(request: Request, db: Session = Depends(get_db)):
+    """Obtiene todos los años disponibles en el sistema"""
+    data = getattr(request.state, "json_data", {})
+    response = Dashboard(db).obtener_anios_disponibles(data)
+    return response
+
+@dashboard_router.post('/crear_anio', tags=["DASHBOARD"], response_model=dict)
+@http_decorator
+def crear_anio(request: Request, db: Session = Depends(get_db)):
+    """Crea un nuevo año en el sistema"""
+    data = getattr(request.state, "json_data", {})
+    response = Dashboard(db).crear_anio(data)
+    return response
+

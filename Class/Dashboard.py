@@ -167,3 +167,73 @@ class Dashboard:
         except Exception as e:
             print(f"Error guardando análisis de causas: {e}")
             return self.tools.output(500, "Error guardando análisis de causas.", {})
+
+    # Función para obtener tickets del periodo
+    def obtener_tickets_periodo(self, data=None):
+        """
+        Obtiene los tickets del periodo especificado (año y mes)
+        """
+        try:
+            filtros = data or {}
+            anio = filtros.get('anio')
+            mes = filtros.get('mes')
+            page = filtros.get('page', 1)
+            limit = filtros.get('limit', 5)
+            
+            if not anio or not mes:
+                return self.tools.output(400, "Año y mes son requeridos.", {})
+            
+            resultado = self.querys.obtener_tickets_periodo(anio, mes, page, limit)
+            
+            return self.tools.output(200, "Tickets del periodo obtenidos exitosamente.", resultado)
+                
+        except Exception as e:
+            print(f"Error obteniendo tickets del periodo: {e}")
+            return self.tools.output(500, "Error obteniendo tickets del periodo.", {})
+
+    # Función para obtener años disponibles
+    def obtener_anios_disponibles(self, data=None):
+        """
+        Obtiene todos los años disponibles en el sistema
+        """
+        try:
+            anios = self.querys.obtener_anios_disponibles()
+            return self.tools.output(200, "Años disponibles obtenidos exitosamente.", anios)
+                
+        except Exception as e:
+            print(f"Error obteniendo años disponibles: {e}")
+            return self.tools.output(500, "Error obteniendo años disponibles.", [])
+
+    # Función para crear un nuevo año
+    def crear_anio(self, data=None):
+        """
+        Crea un nuevo año en el sistema
+        """
+        try:
+            if not data:
+                return self.tools.output(400, "Datos requeridos.", {})
+            
+            anio = data.get('anio')
+            descripcion = data.get('descripcion', '')
+            
+            if not anio:
+                return self.tools.output(400, "El año es requerido.", {})
+            
+            # Validar que sea un número de 4 dígitos
+            try:
+                anio_int = int(anio)
+                if anio_int < 1900 or anio_int > 2100:
+                    return self.tools.output(400, "El año debe estar entre 1900 y 2100.", {})
+            except ValueError:
+                return self.tools.output(400, "El año debe ser un número válido.", {})
+            
+            nuevo_anio = self.querys.crear_anio(anio_int, descripcion)
+            
+            return self.tools.output(200, "Año creado exitosamente.", nuevo_anio)
+                
+        except CustomException as ce:
+            return self.tools.output(400, str(ce), {})
+        except Exception as e:
+            print(f"Error creando año: {e}")
+            return self.tools.output(500, "Error creando año.", {})
+

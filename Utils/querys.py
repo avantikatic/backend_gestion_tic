@@ -13,6 +13,7 @@ from Models.IntranetPerfilesMacroprocesoModel import IntranetPerfilesMacroproces
 from Models.IntranetTipoNivelModel import IntranetTipoNivelModel
 from Models.IntranetObservacionesInformeGestionModel import IntranetObservacionesInformeGestionModel
 from Models.IntranetCausasInformeGestionModel import IntranetCausasInformeGestion
+from Models.IntranetAniosInformeGestionModel import IntranetAniosInformeGestion
 
 import hashlib
 
@@ -1493,8 +1494,109 @@ class Querys:
         except Exception as e:
             print(f"Error obteniendo indicadores de gestión: {e}")
             raise CustomException(f"Error obteniendo indicadores de gestión: {str(e)}")
-    
-    # Query para obtener observación de un mes específico
+
+    # Query para obtener tickets del periodo (filtrado por mes y tipo gestión)
+    def obtener_tickets_periodo(self, anio, mes, page=1, limit=5):
+        """
+        Obtiene los tickets del periodo especificado (año y mes)
+        Filtros:
+        - Activo = 1
+        - Ticket = 1
+        - Tipo Ticket = 1 (Gestión)
+        - Mes/Año de received_date
+        """
+        try:
+            offset = (page - 1) * limit
+
+            # Base query
+            base_query = self.db.query(CorreosMicrosoftModel).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.tipo_ticket == 1, # Solo Gestión
+                func.extract('year', CorreosMicrosoftModel.received_date) == anio,
+                func.extract('month', CorreosMicrosoftModel.received_date) == mes
+            )
+
+            # Total count for pagination
+            total_records = base_query.count()
+
+            # Fetch paginated tickets
+            tickets_query = base_query.order_by(
+                CorreosMicrosoftModel.received_date.desc()
+            ).offset(offset).limit(limit).all()
+
+            tickets = []
+            if tickets_query:
+                # Obtener IDs para consultas masivas
+                prioridad_ids = {t.prioridad for t in tickets_query if t.prioridad}
+                estado_ids = {t.estado for t in tickets_query if t.estado}
+                asignado_ids = {t.asignado for t in tickets_query if t.asignado}
+                tipo_soporte_ids = {t.tipo_soporte for t in tickets_query if t.tipo_soporte}
+                macroproceso_ids = {t.macroproceso for t in tickets_query if t.macroproceso}
+
+                # Consultas auxiliares
+                prioridades = {p.id: p.nombre for p in self.db.query(IntranetTipoPrioridadModel).filter(IntranetTipoPrioridadModel.id.in_(prioridad_ids)).all()}
+                estados = {e.id: e.nombre for e in self.db.query(IntranetEstadosTickets).filter(IntranetEstadosTickets.id.in_(estado_ids)).all()}
+                usuarios = {u.id: u.nombre for u in self.db.query(IntranetUsuariosGestionTicModel).filter(IntranetUsuariosGestionTicModel.id.in_(asignado_ids)).all()}
+                tipos_soporte = {ts.id: ts.nombre for ts in self.db.query(IntranetTipoSoporteModel).filter(IntranetTipoSoporteModel.id.in_(tipo_soporte_ids)).all()}
+                macroprocesos = {m.id: m.nombre for m in self.db.query(IntranetPerfilesMacroprocesoModel).filter(IntranetPerfilesMacroprocesoModel.id.in_(macroproceso_ids)).all()}
+
+                for t in tickets_query:
+                    ticket_dict = t.to_frontend_format()
+                    ticket_dict['prioridad_nombre'] = prioridades.get(t.prioridad, '')
+                    ticket_dict['estado_nombre'] = estados.get(t.estado, '')
+                    ticket_dict['responsable_nombre'] = usuarios.get(t.asignado, 'Sin asignar')
+                    ticket_dict['tipo_soporte_nombre'] = tipos_soporte.get(t.tipo_soporte, '')
+                    ticket_dict['macroproceso_nombre'] = macroprocesos.get(t.macroproceso, '')
+                    # Formatear fecha corta dd/mm
+                    if t.received_date:
+                        ticket_dict['fecha_corta'] = t.received_date.strftime('%d/%m')
+                    tickets.append(ticket_dict)
+
+            # Resumen de estados (sobre el total del mes, no solo la página)
+            resumen_query = self.db.query(
+                CorreosMicrosoftModel.estado,
+                func.count(CorreosMicrosoftModel.id)
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.tipo_ticket == 1,
+                func.extract('year', CorreosMicrosoftModel.received_date) == anio,
+                func.extract('month', CorreosMicrosoftModel.received_date) == mes
+            ).group_by(CorreosMicrosoftModel.estado).all()
+
+            resumen_dict = {estado: count for estado, count in resumen_query}
+            
+            # Mapeo de estados (ajustar IDs según tu DB)
+            # 1: Abierto, 2: En Proceso, 3: Resuelto, 4: Cerrado
+            total = total_records
+            cerrados = resumen_dict.get(3, 0) + resumen_dict.get(4, 0)
+            en_progreso = resumen_dict.get(2, 0)
+            abiertos = resumen_dict.get(1, 0)
+
+            resumen = {
+                'total': total,
+                'cerrados': cerrados,
+                'en_progreso': en_progreso,
+                'abiertos': abiertos
+            }
+
+            return {
+                'tickets': tickets, 
+                'resumen': resumen,
+                'pagination': {
+                    'page': page,
+                    'limit': limit,
+                    'total_records': total_records,
+                    'total_pages': (total_records + limit - 1) // limit
+                }
+            }
+
+        except Exception as e:
+            print(f"Error en obtener_tickets_periodo: {str(e)}")
+            return {'tickets': [], 'resumen': {}, 'pagination': {}}
+
+    # Query para obtener observación de un mes
     def obtener_observacion_mes(self, anio, mes):
         """
         Obtiene la observación de un mes específico
@@ -1630,3 +1732,52 @@ class Querys:
             self.db.rollback()
             print(f"Error guardando análisis de causas: {e}")
             raise CustomException(f"Error guardando análisis de causas: {str(e)}")
+
+    # Query para obtener todos los años disponibles (activos) ordenados descendentemente
+    def obtener_anios_disponibles(self):
+        """Obtiene todos los años disponibles (activos) ordenados descendentemente"""
+        try:
+            anios = self.db.query(IntranetAniosInformeGestion).filter(
+                IntranetAniosInformeGestion.estado == 1
+            ).order_by(
+                IntranetAniosInformeGestion.anio.desc()
+            ).all()
+            
+            return [anio.to_dict() for anio in anios] if anios else []
+            
+        except Exception as e:
+            print(f"Error obteniendo años disponibles: {e}")
+            return []
+
+    # Query para crear un nuevo año en la base de datos
+    def crear_anio(self, anio, descripcion=None):
+        """Crea un nuevo año en la base de datos"""
+        try:
+            # Validar que el año no exista ya
+            anio_existente = self.db.query(IntranetAniosInformeGestion).filter(
+                IntranetAniosInformeGestion.anio == anio
+            ).first()
+            
+            if anio_existente:
+                raise CustomException(f"El año {anio} ya existe en el sistema")
+            
+            # Crear nuevo año
+            nuevo_anio = IntranetAniosInformeGestion(
+                anio=anio,
+                descripcion=descripcion,
+                estado=1
+            )
+            
+            self.db.add(nuevo_anio)
+            self.db.commit()
+            self.db.refresh(nuevo_anio)
+            
+            return nuevo_anio.to_dict()
+            
+        except CustomException as ce:
+            self.db.rollback()
+            raise ce
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando año: {e}")
+            raise CustomException(f"Error creando año: {str(e)}")
