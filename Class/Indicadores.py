@@ -171,18 +171,20 @@ class Indicadores:
     def obtener_tickets_periodo(self, data=None):
         """
         Obtiene los tickets del periodo especificado (año y mes)
+        tipo_ticket: 1 = Gestión, 2 = Estratégico
         """
         try:
             filtros = data or {}
             anio = filtros.get('anio')
             mes = filtros.get('mes')
+            tipo_ticket = filtros.get('tipo_ticket', 1)  # Default 1 (Gestión)
             page = filtros.get('page', 1)
             limit = filtros.get('limit', 5)
             
             if not anio or not mes:
                 return self.tools.output(400, "Año y mes son requeridos.", {})
             
-            resultado = self.querys.obtener_tickets_periodo(anio, mes, page, limit)
+            resultado = self.querys.obtener_tickets_periodo(anio, mes, tipo_ticket, page, limit)
             
             return self.tools.output(200, "Tickets del periodo obtenidos exitosamente.", resultado)
                 

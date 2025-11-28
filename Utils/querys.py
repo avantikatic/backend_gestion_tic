@@ -1746,13 +1746,13 @@ class Querys:
             raise CustomException(f"Error obteniendo indicadores estratégicos: {str(e)}")
 
     # Query para obtener tickets del periodo (filtrado por mes y tipo gestión)
-    def obtener_tickets_periodo(self, anio, mes, page=1, limit=5):
+    def obtener_tickets_periodo(self, anio, mes, tipo_ticket=1, page=1, limit=5):
         """
         Obtiene los tickets del periodo especificado (año y mes)
         Filtros:
         - Activo = 1
         - Ticket = 1
-        - Tipo Ticket = 1 (Gestión)
+        - Tipo Ticket = tipo_ticket (1=Gestión, 2=Estratégico)
         - Mes/Año de received_date
         """
         try:
@@ -1762,7 +1762,7 @@ class Querys:
             base_query = self.db.query(CorreosMicrosoftModel).filter(
                 CorreosMicrosoftModel.activo == 1,
                 CorreosMicrosoftModel.ticket == 1,
-                CorreosMicrosoftModel.tipo_ticket == 1, # Solo Gestión
+                CorreosMicrosoftModel.tipo_ticket == tipo_ticket,
                 func.extract('year', CorreosMicrosoftModel.received_date) == anio,
                 func.extract('month', CorreosMicrosoftModel.received_date) == mes
             )
@@ -1810,7 +1810,7 @@ class Querys:
             ).filter(
                 CorreosMicrosoftModel.activo == 1,
                 CorreosMicrosoftModel.ticket == 1,
-                CorreosMicrosoftModel.tipo_ticket == 1,
+                CorreosMicrosoftModel.tipo_ticket == tipo_ticket,
                 func.extract('year', CorreosMicrosoftModel.received_date) == anio,
                 func.extract('month', CorreosMicrosoftModel.received_date) == mes
             ).group_by(CorreosMicrosoftModel.estado).all()
