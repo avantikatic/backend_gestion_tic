@@ -381,7 +381,6 @@ class Graph:
             url = f"{MICROSOFT_URL_GRAPH}{EMAIL_USER}/mailFolders/{folder_id}/messages?$top=100&$select=from,subject,receivedDateTime,bodyPreview,body,conversationId,id,hasAttachments"
 
             while url and iteration < max_iterations:
-                print(f"Haciendo solicitud a: {url}")
                 data = self._make_request(url)
                 if not data:
                     break
@@ -726,7 +725,8 @@ class Graph:
                 'asignado': 'asignado',
                 'fecha_vencimiento': 'fecha_vencimiento',
                 'nivel_id': 'nivel_id',
-                'sla': 'sla'
+                'sla': 'sla',
+                'origen_estrategico': 'origen_estrategico'
             }
             
             campo_bd = mapeo_campos.get(campo, campo)
@@ -738,7 +738,7 @@ class Graph:
             # Preparar datos de actualización
             # Convertir valor vacío a None para campos numéricos
             if valor == "" or valor == "null":
-                if campo_bd in ['prioridad', 'tipo_soporte', 'tipo_ticket', 'macroproceso', 'asignado', 'sla', 'nivel_id']:
+                if campo_bd in ['prioridad', 'tipo_soporte', 'tipo_ticket', 'macroproceso', 'asignado', 'sla', 'nivel_id', 'origen_estrategico']:
                     valor = None
                 elif campo_bd == 'fecha_vencimiento':
                     valor = None

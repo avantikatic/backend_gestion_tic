@@ -204,6 +204,7 @@ class Tickets:
             print(f"Error obteniendo macroprocesos: {e}")
             return self.tools.output(500, "Error obteniendo macroprocesos.", {})
 
+    # Función para obtener todos los tipos de nivel disponibles
     def obtener_tipo_nivel(self):
         """
         Obtiene todos los tipos de nivel disponibles
@@ -216,6 +217,20 @@ class Tickets:
         except Exception as e:
             print(f"Error obteniendo tipos de nivel: {e}")
             return self.tools.output(500, "Error obteniendo tipos de nivel.", {})
+
+    # Función para obtener todos los orígenes estratégicos disponibles
+    def obtener_origen_estrategico(self):
+        """
+        Obtiene todos los orígenes estratégicos disponibles
+        """
+        try:
+            origenes = self.querys.obtener_origen_estrategico()
+            
+            return self.tools.output(200, "Orígenes estratégicos obtenidos.", origenes)
+                
+        except Exception as e:
+            print(f"Error obteniendo orígenes estratégicos: {e}")
+            return self.tools.output(500, "Error obteniendo orígenes estratégicos.", {})
 
     # Función para filtrar tickets con parámetros específicos (Backend Filtering)
     def filtrar_tickets(self, data: dict):
@@ -280,7 +295,8 @@ class Tickets:
                 'asignado': 'asignado',
                 'fecha_vencimiento': 'fecha_vencimiento',
                 'sla': 'sla',
-                'nivel_id': 'nivel_id'
+                'nivel_id': 'nivel_id',
+                'origen_estrategico': 'origen_estrategico'
             }
             
             campo_bd = mapeo_campos.get(campo, campo)
@@ -292,7 +308,7 @@ class Tickets:
             # Preparar datos de actualización
             # Convertir valor vacío a None para campos numéricos
             if valor == "" or valor == "null":
-                if campo_bd in ['prioridad', 'tipo_soporte', 'tipo_ticket', 'macroproceso', 'asignado', 'sla', 'nivel_id']:
+                if campo_bd in ['prioridad', 'tipo_soporte', 'tipo_ticket', 'macroproceso', 'asignado', 'sla', 'nivel_id', 'origen_estrategico']:
                     valor = None
                 elif campo_bd == 'fecha_vencimiento':
                     valor = None

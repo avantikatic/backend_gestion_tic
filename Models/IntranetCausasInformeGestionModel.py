@@ -13,8 +13,9 @@ class IntranetCausasInformeGestion(BASE):
     responsable = Column(String(None), nullable=True)  # VARCHAR(MAX)
     fecha_compromiso = Column(Date, nullable=True)
     seguimiento = Column(String(None), nullable=True)  # VARCHAR(MAX)
-    estado = Column(Integer, nullable=False, server_default=text('1'))
-    created_at = Column(TIMESTAMP, server_default=text('GETDATE()'))
+    tipo_ticket = Column(Integer, nullable=True)
+    estado = Column(Integer, nullable=False, default=1)
+    created_at = Column(TIMESTAMP, default=text('GETDATE()'))
 
     def to_dict(self):
         return {
@@ -26,6 +27,7 @@ class IntranetCausasInformeGestion(BASE):
             'responsable': self.responsable,
             'fecha_compromiso': self.fecha_compromiso.isoformat() if self.fecha_compromiso else None,
             'seguimiento': self.seguimiento,
+            'tipo_ticket': self.tipo_ticket,
             'estado': self.estado,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

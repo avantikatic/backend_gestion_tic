@@ -64,6 +64,12 @@ def obtener_tipo_nivel(db: Session = Depends(get_db)):
     response = Tickets(db).obtener_tipo_nivel()
     return response
 
+@tickets_router.post('/obtener_origen_estrategico', tags=["TICKETS"], response_model=dict)
+def obtener_origen_estrategico(db: Session = Depends(get_db)):
+    """Obtiene todos los orígenes estratégicos disponibles"""
+    response = Tickets(db).obtener_origen_estrategico()
+    return response
+
 @tickets_router.post('/filtrar_tickets', tags=["TICKETS"], response_model=dict)
 @http_decorator
 def filtrar_tickets(request: Request, db: Session = Depends(get_db)):

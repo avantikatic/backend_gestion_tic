@@ -14,6 +14,7 @@ from Models.IntranetTipoNivelModel import IntranetTipoNivelModel
 from Models.IntranetObservacionesInformeGestionModel import IntranetObservacionesInformeGestionModel
 from Models.IntranetCausasInformeGestionModel import IntranetCausasInformeGestion
 from Models.IntranetAniosInformeGestionModel import IntranetAniosInformeGestion
+from Models.IntranetOrigenEstrategicoModel import IntranetOrigenEstrategicoModel
 
 import hashlib
 
@@ -693,6 +694,22 @@ class Querys:
             print(f"Error obteniendo tipos de nivel: {e}")
             return []
 
+    # Query para obtener orígenes estratégicos
+    def obtener_origen_estrategico(self):
+        """
+        Obtiene todos los orígenes estratégicos disponibles
+        """
+        try:
+            origenes = self.db.query(IntranetOrigenEstrategicoModel).filter(
+                IntranetOrigenEstrategicoModel.estado == 1
+            ).all()
+            
+            return [{'id': origen.id, 'nombre': origen.nombre} for origen in origenes]
+            
+        except Exception as e:
+            print(f"Error obteniendo orígenes estratégicos: {e}")
+            return []
+
     # Query para filtrar tickets con optimización usando IDs exactos
     def filtrar_tickets_optimizado(self, filtros: dict):
         """
@@ -727,6 +744,7 @@ class Querys:
                 icm.prioridad,
                 icm.tipo_soporte,
                 icm.tipo_ticket,
+                icm.origen_estrategico,
                 icm.macroproceso,
                 icm.fecha_vencimiento,
                 icm.sla,
@@ -739,7 +757,7 @@ class Querys:
                 itt.nombre as tipo_ticket_nombre,
                 ipm.nombre as macroproceso_nombre,
                 iugt.nombre as asignado_nombre,
-                
+                ioe.nombre as origen_estrategico_nombre,
                 -- Mapeo de estados
                 CASE 
                     WHEN icm.estado = 1 THEN 'Abierto'
@@ -757,7 +775,7 @@ class Querys:
             LEFT JOIN intranet_tipo_ticket itt ON icm.tipo_ticket = itt.id AND itt.estado = 1
             LEFT JOIN intranet_perfiles_macroproceso ipm ON icm.macroproceso = ipm.id AND ipm.estado = 1
             LEFT JOIN intranet_usuarios_gestion_tic iugt ON icm.asignado = iugt.id AND iugt.estado = 1
-            
+            LEFT JOIN intranet_origen_estrategico ioe ON icm.origen_estrategico = ioe.id AND ioe.estado = 1             
             WHERE icm.activo = 1 
             AND icm.ticket = 1
             """
@@ -862,6 +880,7 @@ class Querys:
                     'prioridad': row_dict.get('prioridad'),
                     'tipo_soporte': row_dict.get('tipo_soporte'),
                     'tipo_ticket': row_dict.get('tipo_ticket'),
+                    'origen_estrategico': row_dict.get('origen_estrategico'),
                     'macroproceso': row_dict.get('macroproceso'),
                     'fecha_vencimiento': row_dict.get('fecha_vencimiento').strftime('%Y-%m-%d') if row_dict.get('fecha_vencimiento') else None,
                     'sla': row_dict.get('sla'),
@@ -872,6 +891,7 @@ class Querys:
                     'tipo_ticket_nombre': row_dict.get('tipo_ticket_nombre'),
                     'macroproceso_nombre': row_dict.get('macroproceso_nombre'),
                     'asignadoNombre': row_dict.get('asignado_nombre'),
+                    'origen_estrategico_nombre': row_dict.get('origen_estrategico_nombre'),
                     'estadoTicket': row_dict.get('estado_nombre')
                 }
                 tickets.append(ticket_dict)
@@ -1354,6 +1374,7 @@ class Querys:
                 CorreosMicrosoftModel.activo == 1,
                 CorreosMicrosoftModel.ticket == 1,
                 CorreosMicrosoftModel.estado == 3,
+                CorreosMicrosoftModel.tipo_ticket == 1,
                 CorreosMicrosoftModel.fecha_cierre != None,
                 func.extract('year', CorreosMicrosoftModel.fecha_cierre) == anio
             ).group_by(extract('month', CorreosMicrosoftModel.fecha_cierre))
@@ -1494,6 +1515,235 @@ class Querys:
         except Exception as e:
             print(f"Error obteniendo indicadores de gestión: {e}")
             raise CustomException(f"Error obteniendo indicadores de gestión: {str(e)}")
+
+    # Query para obtener indicadores estratégicos (mismo formato que gestión)
+    def obtener_indicadores_estrategicos(self, anio):
+        """
+        Obtiene indicadores de tickets estratégicos (tipo_ticket = 2)
+        Retorna la misma estructura que obtener_indicadores_gestion
+        Cuenta tickets por origen_estrategico: 1=Proyectos, 2=ACPM, 3=Actividades informe gestión
+        """
+        try:
+            meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+            # 1. Tickets completados por mes y origen (fecha_cierre)
+            completados_q = self.db.query(
+                extract('month', CorreosMicrosoftModel.fecha_cierre).label('mes'),
+                CorreosMicrosoftModel.origen_estrategico,
+                func.count().label('total_completados'),
+                func.sum(case(
+                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, CorreosMicrosoftModel.fecha_cierre <= CorreosMicrosoftModel.fecha_vencimiento), 1),
+                    else_=0)).label('oportunos'),
+                func.sum(case(
+                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, CorreosMicrosoftModel.fecha_cierre > CorreosMicrosoftModel.fecha_vencimiento), 1),
+                    else_=0)).label('no_oportunos')
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.estado == 3,
+                CorreosMicrosoftModel.tipo_ticket == 2,
+                CorreosMicrosoftModel.fecha_cierre != None,
+                func.extract('year', CorreosMicrosoftModel.fecha_cierre) == anio
+            ).group_by(
+                extract('month', CorreosMicrosoftModel.fecha_cierre),
+                CorreosMicrosoftModel.origen_estrategico
+            )
+
+            # Organizar completados por mes
+            completados_data = {}
+            for row in completados_q.all():
+                mes = int(row.mes)
+                if mes not in completados_data:
+                    completados_data[mes] = []
+                completados_data[mes].append({
+                    'origen': row.origen_estrategico,
+                    'total': row.total_completados,
+                    'oportunos': row.oportunos,
+                    'no_oportunos': row.no_oportunos
+                })
+
+            # 2. Tickets pendientes por mes y origen (fecha_vencimiento)
+            pendientes_q = self.db.query(
+                extract('month', CorreosMicrosoftModel.fecha_vencimiento).label('mes'),
+                CorreosMicrosoftModel.origen_estrategico,
+                func.count().label('total_pendientes')
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.estado.in_([1, 2]),
+                CorreosMicrosoftModel.tipo_ticket == 2,
+                CorreosMicrosoftModel.fecha_vencimiento != None,
+                func.extract('year', CorreosMicrosoftModel.fecha_vencimiento) == anio
+            ).group_by(
+                extract('month', CorreosMicrosoftModel.fecha_vencimiento),
+                CorreosMicrosoftModel.origen_estrategico
+            )
+
+            # Organizar pendientes por mes
+            pendientes_data = {}
+            for row in pendientes_q.all():
+                mes = int(row.mes)
+                if mes not in pendientes_data:
+                    pendientes_data[mes] = []
+                pendientes_data[mes].append({
+                    'origen': row.origen_estrategico,
+                    'total': row.total_pendientes
+                })
+
+            # 3. Tickets ingresados por mes
+            ingresados_q = self.db.query(
+                extract('month', CorreosMicrosoftModel.received_date).label('mes'),
+                func.count().label('total_ingresados')
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.tipo_ticket == 2,
+                CorreosMicrosoftModel.received_date != None,
+                func.extract('year', CorreosMicrosoftModel.received_date) == anio
+            ).group_by(extract('month', CorreosMicrosoftModel.received_date))
+
+            ingresados = {int(row.mes): row.total_ingresados for row in ingresados_q.all()}
+
+            # 4. Tickets abiertos/en proceso al final del mes
+            abiertos_q = self.db.query(
+                extract('month', CorreosMicrosoftModel.fecha_vencimiento).label('mes'),
+                func.count().label('total_abiertos')
+            ).filter(
+                CorreosMicrosoftModel.activo == 1,
+                CorreosMicrosoftModel.ticket == 1,
+                CorreosMicrosoftModel.estado.in_([1, 2]),
+                CorreosMicrosoftModel.tipo_ticket == 2,
+                CorreosMicrosoftModel.fecha_vencimiento != None,
+                func.extract('year', CorreosMicrosoftModel.fecha_vencimiento) == anio
+            ).group_by(extract('month', CorreosMicrosoftModel.fecha_vencimiento))
+
+            abiertos = {int(row.mes): row.total_abiertos for row in abiertos_q.all()}
+
+            # 5. Obtener porcentaje_meta
+            porcentaje_meta = 0
+            try:
+                sql_meta = "SELECT siguiente FROM dbo.consecutivos WHERE tipo = 'META';"
+                result_meta = self.db.execute(text(sql_meta)).fetchone()
+                if result_meta and result_meta[0] is not None:
+                    porcentaje_meta = float(result_meta[0])
+            except Exception as e:
+                print(f"Error obteniendo porcentaje_meta: {e}")
+                porcentaje_meta = None
+
+            # 6. Procesamiento y armado de indicadores
+            indicadores = []
+            total_oportunos_acumulado = 0
+            total_completados_acumulado = 0
+            total_no_oportunos_acumulado = 0
+            total_sin_respuesta_acumulado = 0
+            total_pendientes_acumulado = 0
+            total_a_vencer_acumulado = 0
+            total_ingresados_acumulado = 0
+
+            for i in range(1, 13):
+                # Datos del mes
+                lista_completados = completados_data.get(i, [])
+                lista_pendientes = pendientes_data.get(i, [])
+                
+                ingresados_mes = ingresados.get(i, 0)
+                abiertos_mes = abiertos.get(i, 0)
+
+                # Inicializar contadores del mes
+                mes_proyectos = 0
+                mes_acpm = 0
+                mes_actividades = 0
+                
+                mes_total_completados = 0
+                mes_oportunos = 0
+                mes_no_oportunos = 0
+                
+                mes_pendientes = 0
+
+                # Procesar completados
+                for item in lista_completados:
+                    origen = item['origen']
+                    total = item['total']
+                    
+                    mes_total_completados += total
+                    mes_oportunos += item['oportunos']
+                    mes_no_oportunos += item['no_oportunos']
+                    
+                    if origen == 1:
+                        mes_proyectos += total
+                    elif origen == 2:
+                        mes_acpm += total
+                    elif origen == 3:
+                        mes_actividades += total
+
+                # Procesar pendientes
+                for item in lista_pendientes:
+                    origen = item['origen']
+                    total = item['total']
+                    
+                    mes_pendientes += total
+                    
+                    if origen == 1:
+                        mes_proyectos += total
+                    elif origen == 2:
+                        mes_acpm += total
+                    elif origen == 3:
+                        mes_actividades += total
+
+                # Cálculos totales del mes
+                total_a_vencer_mes = mes_total_completados + mes_pendientes
+                sin_respuesta_mes = mes_total_completados - mes_oportunos - mes_no_oportunos + mes_pendientes
+                
+                # Acumulados
+                total_completados_acumulado += mes_total_completados
+                total_oportunos_acumulado += mes_oportunos
+                total_no_oportunos_acumulado += mes_no_oportunos
+                total_pendientes_acumulado += mes_pendientes
+                total_ingresados_acumulado += ingresados_mes
+                total_a_vencer_acumulado += total_a_vencer_mes
+                total_sin_respuesta_acumulado += sin_respuesta_mes
+
+                # Porcentajes
+                porcentaje = round((mes_oportunos / total_a_vencer_mes * 100), 2) if total_a_vencer_mes > 0 else 0
+                porcentaje_acumulado = round((total_oportunos_acumulado / total_a_vencer_acumulado * 100), 2) if total_a_vencer_acumulado > 0 else 0
+
+                indicadores.append({
+                    'mes': meses[i-1],
+                    'mes_numero': i,
+                    'total_completados': total_a_vencer_mes,
+                    'oportunos': mes_oportunos,
+                    'no_oportunos': mes_no_oportunos,
+                    'sin_respuesta': sin_respuesta_mes,
+                    'total_ingresados': ingresados_mes,
+                    'tickets_abiertos': abiertos_mes,
+                    'porcentaje': porcentaje,
+                    'porcentaje_acumulado': porcentaje_acumulado,
+                    'porcentaje_meta': porcentaje_meta,
+                    # Desglose por origen (Closed + Pending)
+                    'proyectos': mes_proyectos,
+                    'acpm': mes_acpm,
+                    'actividades_informe': mes_actividades
+                })
+
+            return {
+                'anio': anio,
+                'indicadores': indicadores,
+                'totales': {
+                    'total_completados': total_a_vencer_acumulado,
+                    'oportunos': total_oportunos_acumulado,
+                    'no_oportunos': total_no_oportunos_acumulado,
+                    'sin_respuesta': total_sin_respuesta_acumulado,
+                    'total_ingresados': total_ingresados_acumulado,
+                    'porcentaje_global': round((total_oportunos_acumulado / total_a_vencer_acumulado * 100), 2) if total_a_vencer_acumulado > 0 else 0,
+                    # Totales por origen
+                    'proyectos': sum(i['proyectos'] for i in indicadores),
+                    'acpm': sum(i['acpm'] for i in indicadores),
+                    'actividades_informe': sum(i['actividades_informe'] for i in indicadores)
+                }
+            }
+        except Exception as e:
+            print(f"Error obteniendo indicadores estratégicos: {e}")
+            raise CustomException(f"Error obteniendo indicadores estratégicos: {str(e)}")
 
     # Query para obtener tickets del periodo (filtrado por mes y tipo gestión)
     def obtener_tickets_periodo(self, anio, mes, page=1, limit=5):
@@ -1651,13 +1901,14 @@ class Querys:
             raise CustomException(f"Error guardando observación: {str(e)}")
 
     # Query para obtener análisis de causas de un año
-    def obtener_analisis_causas(self, anio):
+    def obtener_analisis_causas(self, anio, tipo_ticket=1):
         """
-        Obtiene todos los análisis de causas y acciones de un año específico
+        Obtiene todos los análisis de causas y acciones de un año específico y tipo de ticket
         """
         try:
             analisis = self.db.query(IntranetCausasInformeGestion).filter(
                 IntranetCausasInformeGestion.anio == anio,
+                IntranetCausasInformeGestion.tipo_ticket == tipo_ticket,
                 IntranetCausasInformeGestion.estado == 1
             ).order_by(
                 IntranetCausasInformeGestion.mes.asc()
@@ -1670,14 +1921,15 @@ class Querys:
             return []
     
     # Query para verificar si existe un análisis para año+mes
-    def verificar_analisis_existe(self, anio, mes):
+    def verificar_analisis_existe(self, anio, mes, tipo_ticket=1):
         """
-        Verifica si ya existe un análisis para el año y mes especificados
+        Verifica si ya existe un análisis para el año, mes y tipo de ticket especificados
         """
         try:
             existe = self.db.query(IntranetCausasInformeGestion).filter(
                 IntranetCausasInformeGestion.anio == anio,
                 IntranetCausasInformeGestion.mes == mes,
+                IntranetCausasInformeGestion.tipo_ticket == tipo_ticket,
                 IntranetCausasInformeGestion.estado == 1
             ).first()
             
@@ -1688,7 +1940,7 @@ class Querys:
             return False
     
     # Query para guardar o actualizar análisis de causas
-    def guardar_analisis_causas(self, id_analisis, anio, mes, analisis, acciones, responsable, fecha_compromiso, seguimiento):
+    def guardar_analisis_causas(self, id_analisis, anio, mes, analisis, acciones, responsable, fecha_compromiso, seguimiento, tipo_ticket=1):
         """
         Guarda o actualiza un análisis de causas y acciones
         """
@@ -1708,10 +1960,15 @@ class Querys:
                 analisis_existente.responsable = responsable
                 analisis_existente.fecha_compromiso = fecha_compromiso
                 analisis_existente.seguimiento = seguimiento
+                # No actualizamos tipo_ticket, se asume que es el mismo
                 
                 self.db.commit()
                 return analisis_existente.to_dict()
             else:
+                # Verificar si ya existe uno para este mes/año/tipo
+                if self.verificar_analisis_existe(anio, mes, tipo_ticket):
+                     raise CustomException("Ya existe un análisis para este periodo y tipo de indicador")
+
                 # Crear nuevo
                 nuevo_analisis = IntranetCausasInformeGestion(
                     anio=anio,
@@ -1721,6 +1978,7 @@ class Querys:
                     responsable=responsable,
                     fecha_compromiso=fecha_compromiso,
                     seguimiento=seguimiento,
+                    tipo_ticket=tipo_ticket,
                     estado=1
                 )
                 self.db.add(nuevo_analisis)

@@ -24,6 +24,7 @@ class IntranetCorreosMicrosoftModel(BASE):
     prioridad = Column(BigInteger, default=0)
     tipo_soporte = Column(BigInteger, default=0)
     tipo_ticket = Column(BigInteger, default=0)
+    origen_estrategico = Column(BigInteger, nullable=True)
     macroproceso = Column(BigInteger, default=0)
     fecha_vencimiento = Column(Date, default=None)
     sla = Column(Integer, default=0)
@@ -60,6 +61,7 @@ class IntranetCorreosMicrosoftModel(BASE):
         self.prioridad = data.get('prioridad', None)
         self.tipo_soporte = data.get('tipo_soporte', None)
         self.tipo_ticket = data.get('tipo_ticket', None)
+        self.origen_estrategico = data.get('origen_estrategico', None)
         self.macroproceso = data.get('macroproceso', None)
         self.fecha_vencimiento = data.get('fecha_vencimiento', None)
         self.sla = data.get('sla', None)
@@ -88,8 +90,9 @@ class IntranetCorreosMicrosoftModel(BASE):
             'prioridad': self.prioridad,
             'tipo_soporte': self.tipo_soporte,
             'tipo_ticket': self.tipo_ticket,
+            'origen_estrategico': self.origen_estrategico,
             'macroproceso': self.macroproceso,
-            'fecha_vencimiento': self.fecha_vencimiento,
+            'fecha_vencimiento': self.fecha_vencimiento.isoformat() if self.fecha_vencimiento else None,
             'sla': self.sla,
             'nivel_id': self.nivel_id,
             'fecha_cierre': self.fecha_cierre.isoformat() if self.fecha_cierre else None,
@@ -115,6 +118,7 @@ class IntranetCorreosMicrosoftModel(BASE):
             'prioridad': self.prioridad,
             'tipo_soporte': self.tipo_soporte,
             'tipo_ticket': self.tipo_ticket,
+            'origen_estrategico': self.origen_estrategico,
             'macroproceso': self.macroproceso,
             'fecha_vencimiento': self.fecha_vencimiento.isoformat() if self.fecha_vencimiento else None,
             'sla': self.sla,
@@ -122,6 +126,6 @@ class IntranetCorreosMicrosoftModel(BASE):
             'fecha_cierre': self.fecha_cierre.isoformat() if self.fecha_cierre else None,
             'hasAttachments': bool(self.has_attachments),
             'attachmentsCount': self.attachments_count,
-            'created_at': self.created_at.date().isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.date().isoformat() if self.updated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
