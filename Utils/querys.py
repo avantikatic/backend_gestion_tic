@@ -1,5 +1,5 @@
 from Utils.tools import Tools, CustomException
-from sqlalchemy import text, func, case, extract, and_, or_
+from sqlalchemy import text, func, case, extract, and_, or_, Date, cast
 from datetime import datetime, date
 from Models.IntranetGraphTokenModel import IntranetGraphTokenModel as TokenModel
 from Models.IntranetCorreosMicrosoftModel import IntranetCorreosMicrosoftModel as CorreosMicrosoftModel
@@ -1362,10 +1362,10 @@ class Querys:
                 extract('month', CorreosMicrosoftModel.fecha_cierre).label('mes'),
                 func.count().label('total_completados'),
                 func.sum(case(
-                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, CorreosMicrosoftModel.fecha_cierre <= CorreosMicrosoftModel.fecha_vencimiento), 1),
+                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, cast(CorreosMicrosoftModel.fecha_cierre, Date) <= cast(CorreosMicrosoftModel.fecha_vencimiento, Date)), 1),
                     else_=0)).label('oportunos'),
                 func.sum(case(
-                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, CorreosMicrosoftModel.fecha_cierre > CorreosMicrosoftModel.fecha_vencimiento), 1),
+                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, cast(CorreosMicrosoftModel.fecha_cierre, Date) > cast(CorreosMicrosoftModel.fecha_vencimiento, Date)), 1),
                     else_=0)).label('no_oportunos'),
                 func.sum(case(
                     (CorreosMicrosoftModel.fecha_vencimiento == None, 1),
@@ -1533,10 +1533,10 @@ class Querys:
                 CorreosMicrosoftModel.origen_estrategico,
                 func.count().label('total_completados'),
                 func.sum(case(
-                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, CorreosMicrosoftModel.fecha_cierre <= CorreosMicrosoftModel.fecha_vencimiento), 1),
+                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, cast(CorreosMicrosoftModel.fecha_cierre, Date) <= cast(CorreosMicrosoftModel.fecha_vencimiento, Date)), 1),
                     else_=0)).label('oportunos'),
                 func.sum(case(
-                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, CorreosMicrosoftModel.fecha_cierre > CorreosMicrosoftModel.fecha_vencimiento), 1),
+                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, cast(CorreosMicrosoftModel.fecha_cierre, Date) > cast(CorreosMicrosoftModel.fecha_vencimiento, Date)), 1),
                     else_=0)).label('no_oportunos')
             ).filter(
                 CorreosMicrosoftModel.activo == 1,
