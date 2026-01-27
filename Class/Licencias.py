@@ -1,8 +1,10 @@
-import requests
 import traceback
 from Utils.tools import Tools, CustomException
 from Utils.querys import Querys
-from datetime import datetime, timedelta
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from io import BytesIO
+from datetime import date, datetime
 
 class Licencias:
 
@@ -272,13 +274,10 @@ class Licencias:
             print(f"Error eliminando revisión: {e}")
             return self.tools.output(500, "Error eliminando revisión.", {})
     
-    def exportar_licencias_excel(self, filtros=None):
+    def exportar_licencias_excel(self, data: dict):
         """Genera un archivo Excel con todas las licencias filtradas"""
         try:
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-            from io import BytesIO
-            from datetime import date, datetime
+            filtros = data.get('filtros', {})
             
             # Obtener todas las licencias sin paginación
             licencias = self.querys.obtener_todas_licencias_excel(filtros)
@@ -427,14 +426,3 @@ class Licencias:
         except Exception as e:
             print(f"Error obteniendo revisiones: {e}")
             return self.tools.output(500, "Error obteniendo revisiones.", {})
-
-    # def eliminar_revision(self, revision_id):
-    #     """Elimina (marca como inactiva) una revisión"""
-    #     try:
-    #         resultado = self.querys.eliminar_revision(revision_id)
-    #         return self.tools.output(200, "Revisión eliminada exitosamente.", resultado)
-    #     except CustomException as ce:
-    #         return self.tools.output(404, str(ce), {})
-    #     except Exception as e:
-    #         print(f"Error eliminando revisión: {e}")
-    #         return self.tools.output(500, "Error eliminando revisión.", {})

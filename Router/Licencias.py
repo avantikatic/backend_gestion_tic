@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Request, Depends, Query, Path
 from sqlalchemy.orm import Session
+from fastapi.responses import StreamingResponse
 from Class.Licencias import Licencias
 from Utils.decorator import http_decorator
 from Config.db import get_db
+from datetime import datetime
 
 licencias_router = APIRouter()
 
@@ -186,17 +188,13 @@ def exportar_licencias_excel(
 ):
     """Exporta todas las licencias filtradas a Excel"""
     try:
-        from fastapi.responses import StreamingResponse
-        from datetime import datetime
-        
         data = getattr(request.state, "json_data", {})
-        filtros = data.get('filtros', {})
-        
+
         # Generar Excel
-        excel_file = Licencias(db).exportar_licencias_excel(filtros)
+        excel_file = Licencias(db).exportar_licencias_excel(data)
         
         # Nombre del archivo con fecha
-        filename = f"licencias_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename = f"Control-licencias_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
         return StreamingResponse(
             excel_file,
