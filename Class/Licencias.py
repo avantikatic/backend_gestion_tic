@@ -181,12 +181,8 @@ class Licencias:
             
             proveedor = self.querys.crear_proveedor(nombre_clean)
             
-            # Si el proveedor ya existía, devolver mensaje informativo
-            proveedores_existentes = self.querys.obtener_proveedores()
-            if any(p['nombre'] == nombre_clean for p in proveedores_existentes):
-                # Si ya existía antes de intentar crearlo
-                if proveedor:
-                    return self.tools.output(200, "El proveedor ya existe.", proveedor)
+            if not proveedor:
+                return self.tools.output(500, "Error: No se pudo crear el proveedor.", {})
             
             return self.tools.output(201, "Proveedor creado exitosamente.", proveedor)
                 
