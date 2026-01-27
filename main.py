@@ -6,6 +6,7 @@ from Router.Graph import graph_router
 from Router.Tickets import tickets_router
 from Router.Dashboard import dashboard_router
 from Router.Indicadores import indicadores_router
+from Router.Licencias import licencias_router
 from pathlib import Path
 
 route = Path.cwd()
@@ -24,6 +25,7 @@ app.include_router(graph_router)
 app.include_router(tickets_router)
 app.include_router(dashboard_router, prefix="/dashboard")
 app.include_router(indicadores_router, prefix="/indicadores")
+app.include_router(licencias_router, prefix="/licencias")
 
 BASE.metadata.create_all(bind=engine)
 

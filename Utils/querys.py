@@ -1,6 +1,8 @@
 from Utils.tools import Tools, CustomException
 from sqlalchemy import text, func, case, extract, and_, or_, Date, cast
 from datetime import datetime, date
+import json
+import traceback
 from Models.IntranetGraphTokenModel import IntranetGraphTokenModel as TokenModel
 from Models.IntranetCorreosMicrosoftModel import IntranetCorreosMicrosoftModel as CorreosMicrosoftModel
 from Models.IntranetSyncLogModel import IntranetSyncLogModel as SyncLogModel
@@ -15,6 +17,14 @@ from Models.IntranetObservacionesInformeGestionModel import IntranetObservacione
 from Models.IntranetCausasInformeGestionModel import IntranetCausasInformeGestion
 from Models.IntranetAniosInformeGestionModel import IntranetAniosInformeGestion
 from Models.IntranetOrigenEstrategicoModel import IntranetOrigenEstrategicoModel
+from Models.IntranetTiposServicioModel import IntranetTiposServicioModel
+from Models.IntranetProveedoresModel import IntranetProveedoresModel
+from Models.IntranetProductosServiciosModel import IntranetProductosServiciosModel
+from Models.IntranetMetodosPagoModel import IntranetMetodosPagoModel
+from Models.IntranetLicenciasModel import IntranetLicenciasModel
+from Models.IntranetLicenciasHistorialModel import IntranetLicenciasHistorialModel
+from Models.IntranetTipoRevisionModel import IntranetTipoRevisionModel
+from Models.IntranetRevisionesModel import IntranetRevisionesModel
 
 import hashlib
 
@@ -2039,3 +2049,773 @@ class Querys:
             self.db.rollback()
             print(f"Error creando año: {e}")
             raise CustomException(f"Error creando año: {str(e)}")
+
+    # ===================================================
+    # QUERIES PARA MÓDULO DE LICENCIAS
+    # ===================================================
+
+    def crear_licencia(self, data):
+        """Crea una nueva licencia en la base de datos"""
+        from Models.IntranetLicenciasHistorialModel import IntranetLicenciasHistorialModel
+        import json
+        
+        try:
+            # Crear la licencia (el ID se genera automáticamente)
+            nueva_licencia = IntranetLicenciasModel(data)
+            self.db.add(nueva_licencia)
+            self.db.commit()
+            self.db.refresh(nueva_licencia)
+            
+            # Registrar en el historial con nombres legibles
+            usuario = data.get('usuario', 'Sistema')
+            responsable = data.get('responsable', {})
+            responsable_str = f"{responsable.get('nombre', '')} - {responsable.get('cargo', '')}" if responsable else ""
+            
+            cambios_iniciales = {
+                'Tipo de Servicio': {'anterior': None, 'nuevo': data.get('tipoServicio', '')},
+                'Proveedor': {'anterior': None, 'nuevo': data.get('proveedor', '')},
+                'Producto': {'anterior': None, 'nuevo': data.get('producto', '')},
+                'Cantidad': {'anterior': None, 'nuevo': str(data.get('cantidad', 0))},
+                'Frecuencia': {'anterior': None, 'nuevo': data.get('frecuencia', '')},
+                'Fecha de Compra': {'anterior': None, 'nuevo': data.get('fechaCompra', '')},
+                'Fecha de Vencimiento': {'anterior': None, 'nuevo': data.get('fechaVencimiento', '')},
+                'Valor': {'anterior': None, 'nuevo': str(data.get('valor', 0))},
+                'Método de Pago': {'anterior': None, 'nuevo': data.get('metodoPago', '')},
+                'Responsable': {'anterior': None, 'nuevo': responsable_str}
+            }
+            
+            historial = IntranetLicenciasHistorialModel(
+                licencia_id=nueva_licencia.id,
+                usuario=usuario,
+                accion='Creación',
+                cambios=json.dumps(cambios_iniciales, ensure_ascii=False)
+            )
+            self.db.add(historial)
+            self.db.commit()
+            
+            return nueva_licencia.to_dict()
+            
+        except CustomException as ce:
+            self.db.rollback()
+            raise ce
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando licencia: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error creando licencia: {str(e)}")
+
+    def obtener_licencias(self, filtros=None, page=1, per_page=5):
+        """Obtiene todas las licencias con filtros opcionales, paginación y KPIs"""
+        
+        try:
+            query = self.db.query(
+                IntranetLicenciasModel,
+                IntranetTiposServicioModel.nombre.label('tipo_servicio_nombre'),
+                IntranetProveedoresModel.nombre.label('proveedor_nombre'),
+                IntranetProductosServiciosModel.nombre.label('producto_nombre'),
+                IntranetMetodosPagoModel.nombre.label('metodo_pago_nombre')
+            ).outerjoin(
+                IntranetTiposServicioModel, 
+                IntranetLicenciasModel.tipo_servicio_id == IntranetTiposServicioModel.id
+            ).outerjoin(
+                IntranetProveedoresModel, 
+                IntranetLicenciasModel.proveedor_id == IntranetProveedoresModel.id
+            ).outerjoin(
+                IntranetProductosServiciosModel, 
+                IntranetLicenciasModel.producto_id == IntranetProductosServiciosModel.id
+            ).outerjoin(
+                IntranetMetodosPagoModel, 
+                IntranetLicenciasModel.metodo_pago_id == IntranetMetodosPagoModel.id
+            ).filter(
+                IntranetLicenciasModel.estado == 1
+            )
+            
+            # Aplicar filtros si se proporcionan
+            if filtros:
+                if 'incluirBajas' in filtros and not filtros['incluirBajas']:
+                    query = query.filter(IntranetLicenciasModel.baja == False)
+                
+                if filtros.get('proveedorId'):
+                    query = query.filter(IntranetLicenciasModel.proveedor_id == filtros['proveedorId'])
+                
+                if filtros.get('tipoServicioId'):
+                    query = query.filter(IntranetLicenciasModel.tipo_servicio_id == filtros['tipoServicioId'])
+            
+            # Total de registros
+            total = query.count()
+            
+            # Obtener TODAS las licencias para calcular KPIs (sin paginación)
+            todas_licencias = query.order_by(IntranetLicenciasModel.id.desc()).all()
+            
+            # Calcular KPIs sobre todas las licencias
+            from datetime import datetime, timedelta
+            kpis = self._calcular_kpis([lic for lic, _, _, _, _ in todas_licencias])
+            
+            # Aplicar paginación solo para la respuesta
+            offset = (page - 1) * per_page
+            resultados = todas_licencias[offset:offset + per_page]
+            
+            # Construir respuesta con nombres e IDs
+            licencias = []
+            for lic, tipo_nombre, prov_nombre, prod_nombre, metodo_nombre in resultados:
+                lic_dict = lic.to_dict()
+                lic_dict['tipoServicio'] = tipo_nombre
+                lic_dict['proveedor'] = prov_nombre
+                lic_dict['producto'] = prod_nombre
+                lic_dict['metodoPago'] = metodo_nombre
+                
+                # Agregar historial de cada licencia
+                historial = self.db.query(IntranetLicenciasHistorialModel).filter(
+                    IntranetLicenciasHistorialModel.licencia_id == lic.id
+                ).order_by(IntranetLicenciasHistorialModel.fecha.desc()).all()
+                lic_dict['historial'] = [h.to_dict() for h in historial]
+                
+                licencias.append(lic_dict)
+            
+            return {
+                'licencias': licencias,
+                'total': total,
+                'page': page,
+                'per_page': per_page,
+                'total_pages': (total + per_page - 1) // per_page,
+                'kpis': kpis
+            }
+            
+        except Exception as e:
+            print(f"Error obteniendo licencias: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error obteniendo licencias: {str(e)}")
+    
+    def _calcular_kpis(self, licencias):
+        """Calcula KPIs sobre todas las licencias"""
+        from datetime import datetime, date
+        
+        hoy = date.today()
+        total = len(licencias)
+        criticas = 0
+        proximas = 0
+        vigentes = 0
+        costo_anual_total = 0
+        
+        for lic in licencias:
+            # Calcular estado según fecha de vencimiento (usar snake_case del modelo)
+            if lic.fecha_vencimiento:
+                dias_restantes = (lic.fecha_vencimiento - hoy).days
+                
+                if dias_restantes < 0 or dias_restantes <= 8:
+                    criticas += 1
+                elif dias_restantes <= 30:
+                    proximas += 1
+                else:
+                    vigentes += 1
+            
+            # Calcular costo anual (solo no dadas de baja)
+            if not lic.baja and lic.valor:
+                valor = float(lic.valor)
+                if lic.frecuencia and lic.frecuencia.lower() == 'mensual':
+                    costo_anual_total += valor * 12
+                else:
+                    costo_anual_total += valor
+        
+        return {
+            'total': total,
+            'criticas': criticas,
+            'proximas': proximas,
+            'vigentes': vigentes,
+            'costo_anual_total': round(costo_anual_total, 2)
+        }
+
+    def obtener_todas_licencias_excel(self, filtros=None):
+        """Obtiene todas las licencias sin paginación para exportar a Excel"""
+        try:
+            query = self.db.query(
+                IntranetLicenciasModel,
+                IntranetTiposServicioModel.nombre.label('tipo_servicio_nombre'),
+                IntranetProveedoresModel.nombre.label('proveedor_nombre'),
+                IntranetProductosServiciosModel.nombre.label('producto_nombre'),
+                IntranetMetodosPagoModel.nombre.label('metodo_pago_nombre')
+            ).outerjoin(
+                IntranetTiposServicioModel, 
+                IntranetLicenciasModel.tipo_servicio_id == IntranetTiposServicioModel.id
+            ).outerjoin(
+                IntranetProveedoresModel, 
+                IntranetLicenciasModel.proveedor_id == IntranetProveedoresModel.id
+            ).outerjoin(
+                IntranetProductosServiciosModel, 
+                IntranetLicenciasModel.producto_id == IntranetProductosServiciosModel.id
+            ).outerjoin(
+                IntranetMetodosPagoModel, 
+                IntranetLicenciasModel.metodo_pago_id == IntranetMetodosPagoModel.id
+            ).filter(
+                IntranetLicenciasModel.estado == 1
+            )
+            
+            # Aplicar filtros si se proporcionan
+            if filtros:
+                if 'incluirBajas' in filtros and not filtros['incluirBajas']:
+                    query = query.filter(IntranetLicenciasModel.baja == False)
+                
+                if filtros.get('proveedorId'):
+                    query = query.filter(IntranetLicenciasModel.proveedor_id == filtros['proveedorId'])
+                
+                if filtros.get('tipoServicioId'):
+                    query = query.filter(IntranetLicenciasModel.tipo_servicio_id == filtros['tipoServicioId'])
+            
+            # Obtener TODAS las licencias sin paginación
+            resultados = query.order_by(IntranetLicenciasModel.id.desc()).all()
+            
+            # Construir respuesta con nombres
+            licencias = []
+            for lic, tipo_nombre, prov_nombre, prod_nombre, metodo_nombre in resultados:
+                lic_dict = lic.to_dict()
+                lic_dict['tipoServicio'] = tipo_nombre
+                lic_dict['proveedor'] = prov_nombre
+                lic_dict['producto'] = prod_nombre
+                lic_dict['metodoPago'] = metodo_nombre
+                licencias.append(lic_dict)
+            
+            return licencias
+            
+        except Exception as e:
+            print(f"Error obteniendo licencias para Excel: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error obteniendo licencias: {str(e)}")
+
+    def obtener_licencia_por_id(self, licencia_id):
+        """Obtiene una licencia específica por su ID"""
+
+        try:
+            resultado = self.db.query(
+                IntranetLicenciasModel,
+                IntranetTiposServicioModel.nombre.label('tipo_servicio_nombre'),
+                IntranetProveedoresModel.nombre.label('proveedor_nombre'),
+                IntranetProductosServiciosModel.nombre.label('producto_nombre'),
+                IntranetMetodosPagoModel.nombre.label('metodo_pago_nombre')
+            ).outerjoin(
+                IntranetTiposServicioModel, 
+                IntranetLicenciasModel.tipo_servicio_id == IntranetTiposServicioModel.id
+            ).outerjoin(
+                IntranetProveedoresModel, 
+                IntranetLicenciasModel.proveedor_id == IntranetProveedoresModel.id
+            ).outerjoin(
+                IntranetProductosServiciosModel, 
+                IntranetLicenciasModel.producto_id == IntranetProductosServiciosModel.id
+            ).outerjoin(
+                IntranetMetodosPagoModel, 
+                IntranetLicenciasModel.metodo_pago_id == IntranetMetodosPagoModel.id
+            ).filter(
+                IntranetLicenciasModel.id == licencia_id,
+                IntranetLicenciasModel.estado == 1
+            ).first()
+            
+            if not resultado:
+                raise CustomException("Licencia no encontrada.")
+            
+            lic, tipo_nombre, prov_nombre, prod_nombre, metodo_nombre = resultado
+            lic_dict = lic.to_dict()
+            lic_dict['tipoServicio'] = tipo_nombre
+            lic_dict['proveedor'] = prov_nombre
+            lic_dict['producto'] = prod_nombre
+            lic_dict['metodoPago'] = metodo_nombre
+            
+            # Agregar historial a la respuesta
+            historial = self.db.query(IntranetLicenciasHistorialModel).filter(
+                IntranetLicenciasHistorialModel.licencia_id == licencia_id
+            ).order_by(IntranetLicenciasHistorialModel.fecha.desc()).all()
+            lic_dict['historial'] = [h.to_dict() for h in historial]
+            
+            return lic_dict
+            
+        except CustomException as ce:
+            raise ce
+        except Exception as e:
+            print(f"Error obteniendo licencia por ID: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error obteniendo licencia: {str(e)}")
+
+    def actualizar_licencia(self, licencia_id, data):
+        """Actualiza una licencia existente"""
+
+        try:
+            licencia = self.db.query(IntranetLicenciasModel).filter(
+                IntranetLicenciasModel.id == licencia_id,
+                IntranetLicenciasModel.estado == 1
+            ).first()
+            
+            if not licencia:
+                raise CustomException("Licencia no encontrada.")
+            
+            # Función auxiliar para normalizar fechas para comparación
+            def normalizar_fecha(fecha):
+                if fecha is None:
+                    return None
+                if isinstance(fecha, str):
+                    return fecha
+                return str(fecha)
+            
+            cambios_detectados = {}
+            
+            # Actualizar campos con IDs y detectar cambios (guardando nombres legibles)
+            if 'tipoServicioId' in data:
+                if licencia.tipo_servicio_id != data['tipoServicioId']:
+                    # Obtener nombres para el historial
+                    tipo_anterior = self.db.query(IntranetTiposServicioModel).filter(
+                        IntranetTiposServicioModel.id == licencia.tipo_servicio_id
+                    ).first()
+                    tipo_nuevo = self.db.query(IntranetTiposServicioModel).filter(
+                        IntranetTiposServicioModel.id == data['tipoServicioId']
+                    ).first()
+                    cambios_detectados['Tipo de Servicio'] = {
+                        'anterior': tipo_anterior.nombre if tipo_anterior else str(licencia.tipo_servicio_id),
+                        'nuevo': tipo_nuevo.nombre if tipo_nuevo else str(data['tipoServicioId'])
+                    }
+                licencia.tipo_servicio_id = data['tipoServicioId']
+                
+            if 'proveedorId' in data:
+                if licencia.proveedor_id != data['proveedorId']:
+                    prov_anterior = self.db.query(IntranetProveedoresModel).filter(
+                        IntranetProveedoresModel.id == licencia.proveedor_id
+                    ).first()
+                    prov_nuevo = self.db.query(IntranetProveedoresModel).filter(
+                        IntranetProveedoresModel.id == data['proveedorId']
+                    ).first()
+                    cambios_detectados['Proveedor'] = {
+                        'anterior': prov_anterior.nombre if prov_anterior else str(licencia.proveedor_id),
+                        'nuevo': prov_nuevo.nombre if prov_nuevo else str(data['proveedorId'])
+                    }
+                licencia.proveedor_id = data['proveedorId']
+                
+            if 'productoId' in data:
+                if licencia.producto_id != data['productoId']:
+                    prod_anterior = self.db.query(IntranetProductosServiciosModel).filter(
+                        IntranetProductosServiciosModel.id == licencia.producto_id
+                    ).first()
+                    prod_nuevo = self.db.query(IntranetProductosServiciosModel).filter(
+                        IntranetProductosServiciosModel.id == data['productoId']
+                    ).first()
+                    cambios_detectados['Producto'] = {
+                        'anterior': prod_anterior.nombre if prod_anterior else str(licencia.producto_id),
+                        'nuevo': prod_nuevo.nombre if prod_nuevo else str(data['productoId'])
+                    }
+                licencia.producto_id = data['productoId']
+                
+            if 'cantidad' in data:
+                if licencia.cantidad != data['cantidad']:
+                    cambios_detectados['Cantidad'] = {
+                        'anterior': licencia.cantidad,
+                        'nuevo': data['cantidad']
+                    }
+                licencia.cantidad = data['cantidad']
+                
+            if 'frecuencia' in data:
+                if licencia.frecuencia != data['frecuencia']:
+                    cambios_detectados['Frecuencia'] = {
+                        'anterior': licencia.frecuencia,
+                        'nuevo': data['frecuencia']
+                    }
+                licencia.frecuencia = data['frecuencia']
+                
+            if 'fechaCompra' in data:
+                fecha_actual = normalizar_fecha(licencia.fecha_compra)
+                fecha_nueva = normalizar_fecha(data['fechaCompra'])
+                if fecha_actual != fecha_nueva:
+                    cambios_detectados['Fecha de Compra'] = {
+                        'anterior': fecha_actual,
+                        'nuevo': fecha_nueva
+                    }
+                licencia.fecha_compra = data['fechaCompra']
+                
+            if 'fechaVencimiento' in data:
+                fecha_actual = normalizar_fecha(licencia.fecha_vencimiento)
+                fecha_nueva = normalizar_fecha(data['fechaVencimiento'])
+                if fecha_actual != fecha_nueva:
+                    cambios_detectados['Fecha de Vencimiento'] = {
+                        'anterior': fecha_actual,
+                        'nuevo': fecha_nueva
+                    }
+                licencia.fecha_vencimiento = data['fechaVencimiento']
+                
+            if 'valor' in data:
+                if licencia.valor != data['valor']:
+                    cambios_detectados['Valor'] = {
+                        'anterior': licencia.valor,
+                        'nuevo': data['valor']
+                    }
+                licencia.valor = data['valor']
+                
+            if 'metodoPagoId' in data:
+                if licencia.metodo_pago_id != data['metodoPagoId']:
+                    metodo_anterior = self.db.query(IntranetMetodosPagoModel).filter(
+                        IntranetMetodosPagoModel.id == licencia.metodo_pago_id
+                    ).first()
+                    metodo_nuevo = self.db.query(IntranetMetodosPagoModel).filter(
+                        IntranetMetodosPagoModel.id == data['metodoPagoId']
+                    ).first()
+                    cambios_detectados['Método de Pago'] = {
+                        'anterior': metodo_anterior.nombre if metodo_anterior else str(licencia.metodo_pago_id),
+                        'nuevo': metodo_nuevo.nombre if metodo_nuevo else str(data['metodoPagoId'])
+                    }
+                licencia.metodo_pago_id = data['metodoPagoId']
+                
+            if 'responsable' in data and isinstance(data['responsable'], dict):
+                nuevo_nombre = data['responsable'].get('nombre')
+                nuevo_cargo = data['responsable'].get('cargo')
+                if licencia.responsable_nombre != nuevo_nombre or licencia.responsable_cargo != nuevo_cargo:
+                    cambios_detectados['Responsable'] = {
+                        'anterior': f"{licencia.responsable_nombre or ''} - {licencia.responsable_cargo or ''}".strip(' -'),
+                        'nuevo': f"{nuevo_nombre or ''} - {nuevo_cargo or ''}".strip(' -')
+                    }
+                licencia.responsable_nombre = nuevo_nombre
+                licencia.responsable_cargo = nuevo_cargo
+                
+            if 'observaciones' in data:
+                obs_actual = licencia.observaciones or ""
+                obs_nueva = data['observaciones'] or ""
+                if obs_actual.strip() != obs_nueva.strip():
+                    cambios_detectados['Observaciones'] = {
+                        'anterior': obs_actual,
+                        'nuevo': obs_nueva
+                    }
+                licencia.observaciones = data['observaciones']
+                
+            if 'baja' in data:
+                baja_original = licencia.baja  # Guardar valor original antes de actualizar
+                if licencia.baja != data['baja']:
+                    cambios_detectados['Estado Baja'] = {
+                        'anterior': 'Sí' if licencia.baja else 'No',
+                        'nuevo': 'Sí' if data['baja'] else 'No'
+                    }
+                licencia.baja = data['baja']
+                
+            if 'fechaBaja' in data:
+                fecha_actual = normalizar_fecha(licencia.fecha_baja)
+                fecha_nueva = normalizar_fecha(data['fechaBaja'])
+                if fecha_actual != fecha_nueva:
+                    cambios_detectados['Fecha Baja'] = {
+                        'anterior': fecha_actual,
+                        'nuevo': fecha_nueva
+                    }
+                licencia.fecha_baja = data['fechaBaja']
+                
+            if 'motivoBaja' in data:
+                motivo_actual = licencia.motivo_baja or ""
+                motivo_nuevo = data['motivoBaja'] or ""
+                if motivo_actual.strip() != motivo_nuevo.strip():
+                    cambios_detectados['Motivo Baja'] = {
+                        'anterior': motivo_actual,
+                        'nuevo': motivo_nuevo
+                    }
+                licencia.motivo_baja = data['motivoBaja']
+            
+            licencia.updated_at = datetime.now()
+            
+            # Determinar el tipo de acción
+            accion = 'Edición'
+            if 'baja' in data:
+                baja_original = locals().get('baja_original', licencia.baja)
+                if data['baja'] == 1:
+                    accion = 'Baja'
+                elif data['baja'] == 0 and baja_original == 1:
+                    accion = 'Reactivación'
+            
+            # Crear registro en el historial solo si hubo cambios
+            if cambios_detectados:
+                # Convertir valores no serializables (fechas, etc.) a strings
+                cambios_serializables = {}
+                for campo, valores in cambios_detectados.items():
+                    cambios_serializables[campo] = {
+                        'anterior': str(valores['anterior']) if valores['anterior'] is not None else None,
+                        'nuevo': str(valores['nuevo']) if valores['nuevo'] is not None else None
+                    }
+                
+                historial = IntranetLicenciasHistorialModel(
+                    licencia_id=licencia_id,
+                    usuario="Jeyson Martinez",  # TODO: Obtener del usuario autenticado
+                    accion=accion,
+                    cambios=json.dumps(cambios_serializables, ensure_ascii=False)
+                )
+                self.db.add(historial)
+            
+            self.db.commit()
+            self.db.refresh(licencia)
+            
+            return licencia.to_dict()
+            
+        except CustomException as ce:
+            self.db.rollback()
+            raise ce
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error actualizando licencia: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error actualizando licencia: {str(e)}")
+
+    def obtener_historial_licencia(self, licencia_id):
+        """Obtiene el historial de cambios de una licencia"""
+        
+        try:
+            historial = self.db.query(IntranetLicenciasHistorialModel).filter(
+                IntranetLicenciasHistorialModel.licencia_id == licencia_id
+            ).order_by(IntranetLicenciasHistorialModel.fecha.desc()).all()
+            
+            return [h.to_dict() for h in historial]
+            
+        except Exception as e:
+            print(f"Error obteniendo historial de licencia: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error obteniendo historial de licencia: {str(e)}")
+
+    def eliminar_licencia(self, licencia_id):
+        """Elimina (marca como inactiva) una licencia"""
+
+        try:
+            licencia = self.db.query(IntranetLicenciasModel).filter(
+                IntranetLicenciasModel.id == licencia_id,
+                IntranetLicenciasModel.estado == 1
+            ).first()
+            
+            if not licencia:
+                raise CustomException("Licencia no encontrada.")
+            
+            licencia.estado = 0
+            licencia.updated_at = datetime.now()
+            
+            self.db.commit()
+            
+            return True
+            
+        except CustomException as ce:
+            self.db.rollback()
+            raise ce
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error eliminando licencia: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error eliminando licencia: {str(e)}")
+
+    # ===================================================
+    # QUERIES PARA CATÁLOGOS DE LICENCIAS
+    # ===================================================
+
+    def obtener_tipos_servicio(self):
+        """Obtiene todos los tipos de servicio activos"""
+        
+        try:
+            tipos = self.db.query(IntranetTiposServicioModel).filter(
+                IntranetTiposServicioModel.estado == 1
+            ).order_by(IntranetTiposServicioModel.nombre.asc()).all()
+            
+            return [t.to_dict() for t in tipos]
+            
+        except Exception as e:
+            print(f"Error obteniendo tipos de servicio: {e}")
+            raise CustomException(f"Error obteniendo tipos de servicio: {str(e)}")
+
+    def obtener_proveedores(self):
+        """Obtiene todos los proveedores activos"""
+
+        try:
+            proveedores = self.db.query(IntranetProveedoresModel).filter(
+                IntranetProveedoresModel.estado == 1
+            ).order_by(IntranetProveedoresModel.nombre.asc()).all()
+            
+            return [p.to_dict() for p in proveedores]
+            
+        except Exception as e:
+            print(f"Error obteniendo proveedores: {e}")
+            raise CustomException(f"Error obteniendo proveedores: {str(e)}")
+
+    def obtener_productos_servicios(self):
+        """Obtiene todos los productos/servicios activos"""
+
+        try:
+            productos = self.db.query(IntranetProductosServiciosModel).filter(
+                IntranetProductosServiciosModel.estado == 1
+            ).order_by(IntranetProductosServiciosModel.nombre.asc()).all()
+            
+            return [p.to_dict() for p in productos]
+            
+        except Exception as e:
+            print(f"Error obteniendo productos/servicios: {e}")
+            raise CustomException(f"Error obteniendo productos/servicios: {str(e)}")
+
+    def obtener_metodos_pago(self):
+        """Obtiene todos los métodos de pago activos"""
+        
+        try:
+            metodos = self.db.query(IntranetMetodosPagoModel).filter(
+                IntranetMetodosPagoModel.estado == 1
+            ).order_by(IntranetMetodosPagoModel.nombre.asc()).all()
+            
+            return [m.to_dict() for m in metodos]
+            
+        except Exception as e:
+            print(f"Error obteniendo métodos de pago: {e}")
+            raise CustomException(f"Error obteniendo métodos de pago: {str(e)}")
+
+    def crear_proveedor(self, nombre):
+        """Crea un nuevo proveedor"""
+        
+        try:
+            # Verificar que no exista
+            existe = self.db.query(IntranetProveedoresModel).filter(
+                IntranetProveedoresModel.nombre == nombre
+            ).first()
+            
+            if existe:
+                return existe.to_dict()  # Devolver el existente si ya existe
+            
+            nuevo_proveedor = IntranetProveedoresModel()
+            nuevo_proveedor.nombre = nombre
+            
+            self.db.add(nuevo_proveedor)
+            self.db.commit()
+            self.db.refresh(nuevo_proveedor)
+            
+            return nuevo_proveedor.to_dict()
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando proveedor: {e}")
+            raise CustomException(f"Error creando proveedor: {str(e)}")
+
+    def crear_producto_servicio(self, nombre):
+        """Crea un nuevo producto/servicio"""
+        
+        try:
+            # Verificar que no exista
+            existe = self.db.query(IntranetProductosServiciosModel).filter(
+                IntranetProductosServiciosModel.nombre == nombre
+            ).first()
+            
+            if existe:
+                return existe.to_dict()  # Devolver el existente si ya existe
+            
+            nuevo_producto = IntranetProductosServiciosModel()
+            nuevo_producto.nombre = nombre
+            
+            self.db.add(nuevo_producto)
+            self.db.commit()
+            self.db.refresh(nuevo_producto)
+            
+            return nuevo_producto.to_dict()
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando producto/servicio: {e}")
+            raise CustomException(f"Error creando producto/servicio: {str(e)}")
+
+    # ===============================================
+    # ENDPOINTS PARA REVISIONES GENERALES
+    # ===============================================
+
+    def obtener_tipos_revision(self):
+        """Obtiene todos los tipos de revisión activos"""
+        try:
+            tipos = self.db.query(IntranetTipoRevisionModel).filter(
+                IntranetTipoRevisionModel.estado == 1
+            ).all()
+            
+            return [tipo.to_dict() for tipo in tipos]
+            
+        except Exception as e:
+            print(f"Error obteniendo tipos de revisión: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error obteniendo tipos de revisión: {str(e)}")
+
+    def crear_revision(self, data):
+        """Crea una nueva revisión general"""
+        try:
+            nueva_revision = IntranetRevisionesModel()
+            nueva_revision.fecha = datetime.strptime(data['fecha'], '%Y-%m-%d').date()
+            nueva_revision.tipo_revision_id = data['tipo_revision_id']
+            nueva_revision.observaciones = data.get('observaciones', '')
+            nueva_revision.usuario = data['usuario']
+            
+            self.db.add(nueva_revision)
+            self.db.commit()
+            self.db.refresh(nueva_revision)
+            
+            # Obtener el nombre del tipo de revisión para la respuesta
+            tipo = self.db.query(IntranetTipoRevisionModel).filter(
+                IntranetTipoRevisionModel.id == nueva_revision.tipo_revision_id
+            ).first()
+            
+            resultado = nueva_revision.to_dict()
+            resultado['tipo'] = tipo.nombre if tipo else None
+            
+            return resultado
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando revisión: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error creando revisión: {str(e)}")
+
+    def obtener_revisiones(self, page=1, per_page=5):
+        """Obtiene revisiones con paginación"""
+        try:
+            # Calcular offset
+            offset = (page - 1) * per_page
+            
+            # Consulta con JOIN para obtener el nombre del tipo
+            query = self.db.query(
+                IntranetRevisionesModel,
+                IntranetTipoRevisionModel.nombre.label('tipo_nombre')
+            ).join(
+                IntranetTipoRevisionModel,
+                IntranetRevisionesModel.tipo_revision_id == IntranetTipoRevisionModel.id
+            ).filter(
+                IntranetRevisionesModel.estado == 1
+            ).order_by(
+                IntranetRevisionesModel.fecha.desc(),
+                IntranetRevisionesModel.created_at.desc()
+            )
+            
+            # Total de registros
+            total = query.count()
+            
+            # Aplicar paginación
+            revisiones_paginadas = query.limit(per_page).offset(offset).all()
+            
+            # Construir respuesta
+            revisiones = []
+            for revision, tipo_nombre in revisiones_paginadas:
+                rev_dict = revision.to_dict()
+                rev_dict['tipo'] = tipo_nombre
+                revisiones.append(rev_dict)
+            
+            return {
+                'revisiones': revisiones,
+                'total': total,
+                'page': page,
+                'per_page': per_page,
+                'total_pages': (total + per_page - 1) // per_page  # Redondeo hacia arriba
+            }
+            
+        except Exception as e:
+            print(f"Error obteniendo revisiones: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error obteniendo revisiones: {str(e)}")
+
+    def eliminar_revision(self, revision_id):
+        """Elimina (marca como inactiva) una revisión"""
+        try:
+            revision = self.db.query(IntranetRevisionesModel).filter(
+                IntranetRevisionesModel.id == revision_id
+            ).first()
+            
+            if not revision:
+                raise CustomException("Revisión no encontrada")
+            
+            revision.estado = 0
+            self.db.commit()
+            
+            return {"message": "Revisión eliminada correctamente"}
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error eliminando revisión: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+
+            raise CustomException(f"Error creando producto/servicio: {str(e)}")
