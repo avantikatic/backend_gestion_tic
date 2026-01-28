@@ -25,6 +25,7 @@ from Models.IntranetLicenciasModel import IntranetLicenciasModel
 from Models.IntranetLicenciasHistorialModel import IntranetLicenciasHistorialModel
 from Models.IntranetTipoRevisionModel import IntranetTipoRevisionModel
 from Models.IntranetRevisionesModel import IntranetRevisionesModel
+from Models.IntranetVersionesLicenciasModel import IntranetVersionesLicenciasModel
 
 import hashlib
 
@@ -2960,5 +2961,95 @@ class Querys:
             self.db.rollback()
             print(f"Error eliminando revisión: {e}")
             print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error eliminando revisión: {str(e)}")
 
-            raise CustomException(f"Error creando producto/servicio: {str(e)}")
+    # ==================== VERSIONES DE LICENCIAS ====================
+    
+    def crear_version(self, data):
+        """Crea una nueva versión del control de licencias"""
+        try:
+            nueva_version = IntranetVersionesLicenciasModel()
+            nueva_version.fecha = datetime.strptime(data['fecha'], '%Y-%m-%d').date()
+            nueva_version.version = data['version']
+            nueva_version.descripcion = data.get('descripcion', '')
+            
+            self.db.add(nueva_version)
+            self.db.commit()
+            self.db.refresh(nueva_version)
+            
+            return {
+                'id': nueva_version.id,
+                'fecha': nueva_version.fecha.strftime('%Y-%m-%d'),
+                'version': nueva_version.version,
+                'descripcion': nueva_version.descripcion
+            }
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando versión: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error creando versión: {str(e)}")
+
+    def obtener_versiones(self, page=1, per_page=5):
+        """Obtiene versiones con paginación"""
+        try:
+            # Calcular offset
+            offset = (page - 1) * per_page
+            
+            query = self.db.query(
+                IntranetVersionesLicenciasModel
+            ).filter(
+                IntranetVersionesLicenciasModel.estado == 1
+            ).order_by(
+                IntranetVersionesLicenciasModel.fecha.desc()
+            )
+            
+            # Total de registros
+            total = query.count()
+            
+            # Aplicar paginación
+            versiones_paginadas = query.limit(per_page).offset(offset).all()
+            
+            # Construir respuesta
+            versiones = []
+            for version in versiones_paginadas:
+                versiones.append({
+                    'id': version.id,
+                    'fecha': version.fecha.strftime('%Y-%m-%d'),
+                    'version': version.version,
+                    'descripcion': version.descripcion
+                })
+            
+            return {
+                'versiones': versiones,
+                'total': total,
+                'page': page,
+                'per_page': per_page,
+                'total_pages': (total + per_page - 1) // per_page
+            }
+            
+        except Exception as e:
+            print(f"Error obteniendo versiones: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error obteniendo versiones: {str(e)}")
+
+    def eliminar_version(self, version_id):
+        """Marca una versión como inactiva (estado = 0)"""
+        try:
+            version = self.db.query(IntranetVersionesLicenciasModel).filter(
+                IntranetVersionesLicenciasModel.id == version_id
+            ).first()
+            
+            if not version:
+                raise CustomException("Versión no encontrada")
+            
+            version.estado = 0
+            self.db.commit()
+            
+            return {"message": "Versión eliminada correctamente"}
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error eliminando versión: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise CustomException(f"Error eliminando versión: {str(e)}")

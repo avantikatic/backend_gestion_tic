@@ -469,3 +469,51 @@ class Licencias:
         except Exception as e:
             print(f"Error obteniendo revisiones: {e}")
             return self.tools.output(500, "Error obteniendo revisiones.", {})
+
+    # ===================================================
+    # MÉTODOS PARA VERSIONES DEL CONTROL DE LICENCIAS
+    # ===================================================
+
+    def crear_version(self, data):
+        """Crea una nueva versión del control de licencias"""
+        try:
+            # Validar datos requeridos
+            if not data.get('fecha'):
+                return self.tools.output(400, "La fecha es requerida.", {})
+            if not data.get('version'):
+                return self.tools.output(400, "La versión es requerida.", {})
+            
+            version = self.querys.crear_version(data)
+            return self.tools.output(201, "Versión creada exitosamente.", version)
+        except CustomException as ce:
+            return self.tools.output(400, str(ce), {})
+        except Exception as e:
+            print(f"Error creando versión: {e}")
+            return self.tools.output(500, "Error creando versión.", {})
+
+    def obtener_versiones(self, page=1, per_page=5):
+        """Obtiene todas las versiones con paginación"""
+        try:
+            resultado = self.querys.obtener_versiones(page, per_page)
+            return self.tools.output(200, "Versiones obtenidas exitosamente.", resultado)
+        except CustomException as ce:
+            return self.tools.output(500, str(ce), {})
+        except Exception as e:
+            print(f"Error obteniendo versiones: {e}")
+            return self.tools.output(500, "Error obteniendo versiones.", {})
+
+    def eliminar_version(self, data: dict):
+        """Elimina una versión"""
+        try:
+            version_id = data.get('version_id')
+            
+            if not version_id:
+                raise CustomException("No se proporcionó version_id")
+            
+            resultado = self.querys.eliminar_version(version_id)
+            return self.tools.output(200, resultado["message"], resultado)
+        except CustomException as ce:
+            return self.tools.output(404, str(ce), {})
+        except Exception as e:
+            print(f"Error eliminando versión: {e}")
+            return self.tools.output(500, "Error eliminando versión.", {})

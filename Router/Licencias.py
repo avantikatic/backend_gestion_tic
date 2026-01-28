@@ -199,6 +199,44 @@ def eliminar_revision(
     response = Licencias(db).eliminar_revision(data)
     return response
 
+# ===================================================
+# ENDPOINTS PARA VERSIONES DEL CONTROL DE LICENCIAS
+# ===================================================
+
+@licencias_router.post('/versiones/crear', tags=["VERSIONES"], response_model=dict)
+@http_decorator
+def crear_version(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Crea una nueva versión del control de licencias"""
+    data = getattr(request.state, "json_data", {})
+    response = Licencias(db).crear_version(data)
+    return response
+
+@licencias_router.post('/versiones/obtener', tags=["VERSIONES"], response_model=dict)
+@http_decorator
+def obtener_versiones(
+    request: Request,
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1, description="Número de página"),
+    per_page: int = Query(5, ge=1, le=100, description="Registros por página")
+):
+    """Obtiene todas las versiones con paginación"""
+    response = Licencias(db).obtener_versiones(page, per_page)
+    return response
+
+@licencias_router.put('/versiones/eliminar', tags=["VERSIONES"], response_model=dict)
+@http_decorator
+def eliminar_version(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Elimina una versión"""
+    data = getattr(request.state, "json_data", {})
+    response = Licencias(db).eliminar_version(data)
+    return response
+
 @licencias_router.post('/exportar-excel', tags=["LICENCIAS"])
 def exportar_licencias_excel(
     request: Request,
