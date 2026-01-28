@@ -2108,65 +2108,83 @@ class Querys:
         """Obtiene todas las licencias con filtros opcionales, paginación y KPIs"""
         
         try:
-            query = self.db.query(
-                IntranetLicenciasModel,
-                IntranetTiposServicioModel.nombre.label('tipo_servicio_nombre'),
-                IntranetProveedoresModel.nombre.label('proveedor_nombre'),
-                IntranetProductosServiciosModel.nombre.label('producto_nombre'),
-                IntranetMetodosPagoModel.nombre.label('metodo_pago_nombre')
-            ).outerjoin(
-                IntranetTiposServicioModel, 
-                IntranetLicenciasModel.tipo_servicio_id == IntranetTiposServicioModel.id
-            ).outerjoin(
-                IntranetProveedoresModel, 
-                IntranetLicenciasModel.proveedor_id == IntranetProveedoresModel.id
-            ).outerjoin(
-                IntranetProductosServiciosModel, 
-                IntranetLicenciasModel.producto_id == IntranetProductosServiciosModel.id
-            ).outerjoin(
-                IntranetMetodosPagoModel, 
-                IntranetLicenciasModel.metodo_pago_id == IntranetMetodosPagoModel.id
-            ).filter(
-                IntranetLicenciasModel.estado == 1
-            )
+            # Query con JOIN a tabla terceros para obtener nombre del proveedor
+            sql_base = """
+                SELECT 
+                    il.*,
+                    its.nombre as tipo_servicio_nombre,
+                    t.nombres as proveedor_nombre,
+                    ips.nombre as producto_nombre,
+                    imp.nombre as metodo_pago_nombre
+                FROM intranet_licencias il
+                LEFT JOIN intranet_tipos_servicio its ON il.tipo_servicio_id = its.id
+                LEFT JOIN terceros t ON il.proveedor_id = t.nit
+                LEFT JOIN intranet_productos_servicios ips ON il.producto_id = ips.id
+                LEFT JOIN intranet_metodos_pago imp ON il.metodo_pago_id = imp.id
+                WHERE il.estado = 1
+            """
             
             # Aplicar filtros si se proporcionan
+            condiciones = []
+            params = {}
+            
             if filtros:
                 if 'incluirBajas' in filtros and not filtros['incluirBajas']:
-                    query = query.filter(IntranetLicenciasModel.baja == False)
+                    condiciones.append("il.baja = 0")
                 
                 if filtros.get('proveedorId'):
-                    query = query.filter(IntranetLicenciasModel.proveedor_id == filtros['proveedorId'])
+                    condiciones.append("il.proveedor_id = :proveedorId")
+                    params['proveedorId'] = filtros['proveedorId']
                 
                 if filtros.get('tipoServicioId'):
-                    query = query.filter(IntranetLicenciasModel.tipo_servicio_id == filtros['tipoServicioId'])
+                    condiciones.append("il.tipo_servicio_id = :tipoServicioId")
+                    params['tipoServicioId'] = filtros['tipoServicioId']
             
-            # Total de registros
-            total = query.count()
+            if condiciones:
+                sql_base += " AND " + " AND ".join(condiciones)
             
-            # Obtener TODAS las licencias para calcular KPIs (sin paginación)
-            todas_licencias = query.order_by(IntranetLicenciasModel.id.desc()).all()
+            sql_base += " ORDER BY il.id DESC"
+            
+            # Ejecutar consulta
+            result = self.db.execute(text(sql_base), params).fetchall()
+            total = len(result)
             
             # Calcular KPIs sobre todas las licencias
-            from datetime import datetime, timedelta
-            kpis = self._calcular_kpis([lic for lic, _, _, _, _ in todas_licencias])
+            from datetime import datetime, timedelta, date
+            kpis = self._calcular_kpis_from_raw(result)
             
-            # Aplicar paginación solo para la respuesta
+            # Aplicar paginación
             offset = (page - 1) * per_page
-            resultados = todas_licencias[offset:offset + per_page]
+            resultados_paginados = result[offset:offset + per_page]
             
-            # Construir respuesta con nombres e IDs
+            # Construir respuesta
             licencias = []
-            for lic, tipo_nombre, prov_nombre, prod_nombre, metodo_nombre in resultados:
-                lic_dict = lic.to_dict()
-                lic_dict['tipoServicio'] = tipo_nombre
-                lic_dict['proveedor'] = prov_nombre
-                lic_dict['producto'] = prod_nombre
-                lic_dict['metodoPago'] = metodo_nombre
+            for row in resultados_paginados:
+                lic_dict = {
+                    'id': row.id,
+                    'tipoServicioId': row.tipo_servicio_id,
+                    'tipoServicio': row.tipo_servicio_nombre,
+                    'proveedorId': row.proveedor_id,
+                    'proveedor': row.proveedor_nombre,
+                    'productoId': row.producto_id,
+                    'producto': row.producto_nombre,
+                    'cantidad': row.cantidad,
+                    'frecuencia': row.frecuencia,
+                    'fechaCompra': row.fecha_compra.isoformat() if row.fecha_compra else None,
+                    'fechaVencimiento': row.fecha_vencimiento.isoformat() if row.fecha_vencimiento else None,
+                    'valor': float(row.valor) if row.valor else 0,
+                    'metodoPagoId': row.metodo_pago_id,
+                    'metodoPago': row.metodo_pago_nombre,
+                    'responsable': {'nombre': row.responsable_nombre, 'cargo': row.responsable_cargo} if row.responsable_nombre else None,
+                    'observaciones': row.observaciones,
+                    'baja': bool(row.baja),
+                    'fechaBaja': row.fecha_baja.isoformat() if row.fecha_baja else None,
+                    'motivoBaja': row.motivo_baja
+                }
                 
                 # Agregar historial de cada licencia
                 historial = self.db.query(IntranetLicenciasHistorialModel).filter(
-                    IntranetLicenciasHistorialModel.licencia_id == lic.id
+                    IntranetLicenciasHistorialModel.licencia_id == row.id
                 ).order_by(IntranetLicenciasHistorialModel.fecha.desc()).all()
                 lic_dict['historial'] = [h.to_dict() for h in historial]
                 
@@ -2180,6 +2198,8 @@ class Querys:
                 'total_pages': (total + per_page - 1) // per_page,
                 'kpis': kpis
             }
+            
+
             
         except Exception as e:
             print(f"Error obteniendo licencias: {e}")
@@ -2224,54 +2244,113 @@ class Querys:
             'vigentes': vigentes,
             'costo_anual_total': round(costo_anual_total, 2)
         }
+    
+    def _calcular_kpis_from_raw(self, rows):
+        """Calcula KPIs desde resultados raw de consulta SQL"""
+        from datetime import date
+        
+        hoy = date.today()
+        total = len(rows)
+        criticas = 0
+        proximas = 0
+        vigentes = 0
+        costo_anual_total = 0
+        
+        for row in rows:
+            # Calcular estado según fecha de vencimiento
+            if row.fecha_vencimiento:
+                dias_restantes = (row.fecha_vencimiento - hoy).days
+                
+                if dias_restantes < 0 or dias_restantes <= 8:
+                    criticas += 1
+                elif dias_restantes <= 30:
+                    proximas += 1
+                else:
+                    vigentes += 1
+            
+            # Calcular costo anual (solo no dadas de baja)
+            if not row.baja and row.valor:
+                valor = float(row.valor)
+                if row.frecuencia and row.frecuencia.lower() == 'mensual':
+                    costo_anual_total += valor * 12
+                else:
+                    costo_anual_total += valor
+        
+        return {
+            'total': total,
+            'criticas': criticas,
+            'proximas': proximas,
+            'vigentes': vigentes,
+            'costo_anual_total': round(costo_anual_total, 2)
+        }
 
     def obtener_todas_licencias_excel(self, filtros=None):
         """Obtiene todas las licencias sin paginación para exportar a Excel"""
         try:
-            query = self.db.query(
-                IntranetLicenciasModel,
-                IntranetTiposServicioModel.nombre.label('tipo_servicio_nombre'),
-                IntranetProveedoresModel.nombre.label('proveedor_nombre'),
-                IntranetProductosServiciosModel.nombre.label('producto_nombre'),
-                IntranetMetodosPagoModel.nombre.label('metodo_pago_nombre')
-            ).outerjoin(
-                IntranetTiposServicioModel, 
-                IntranetLicenciasModel.tipo_servicio_id == IntranetTiposServicioModel.id
-            ).outerjoin(
-                IntranetProveedoresModel, 
-                IntranetLicenciasModel.proveedor_id == IntranetProveedoresModel.id
-            ).outerjoin(
-                IntranetProductosServiciosModel, 
-                IntranetLicenciasModel.producto_id == IntranetProductosServiciosModel.id
-            ).outerjoin(
-                IntranetMetodosPagoModel, 
-                IntranetLicenciasModel.metodo_pago_id == IntranetMetodosPagoModel.id
-            ).filter(
-                IntranetLicenciasModel.estado == 1
-            )
+            # Query con JOIN a tabla terceros
+            sql_base = """
+                SELECT 
+                    il.*,
+                    its.nombre as tipo_servicio_nombre,
+                    t.nombres as proveedor_nombre,
+                    ips.nombre as producto_nombre,
+                    imp.nombre as metodo_pago_nombre
+                FROM intranet_licencias il
+                LEFT JOIN intranet_tipos_servicio its ON il.tipo_servicio_id = its.id
+                LEFT JOIN terceros t ON il.proveedor_id = t.nit
+                LEFT JOIN intranet_productos_servicios ips ON il.producto_id = ips.id
+                LEFT JOIN intranet_metodos_pago imp ON il.metodo_pago_id = imp.id
+                WHERE il.estado = 1
+            """
             
-            # Aplicar filtros si se proporcionan
+            # Aplicar filtros
+            condiciones = []
+            params = {}
+            
             if filtros:
                 if 'incluirBajas' in filtros and not filtros['incluirBajas']:
-                    query = query.filter(IntranetLicenciasModel.baja == False)
+                    condiciones.append("il.baja = 0")
                 
                 if filtros.get('proveedorId'):
-                    query = query.filter(IntranetLicenciasModel.proveedor_id == filtros['proveedorId'])
+                    condiciones.append("il.proveedor_id = :proveedorId")
+                    params['proveedorId'] = filtros['proveedorId']
                 
                 if filtros.get('tipoServicioId'):
-                    query = query.filter(IntranetLicenciasModel.tipo_servicio_id == filtros['tipoServicioId'])
+                    condiciones.append("il.tipo_servicio_id = :tipoServicioId")
+                    params['tipoServicioId'] = filtros['tipoServicioId']
             
-            # Obtener TODAS las licencias sin paginación
-            resultados = query.order_by(IntranetLicenciasModel.id.desc()).all()
+            if condiciones:
+                sql_base += " AND " + " AND ".join(condiciones)
             
-            # Construir respuesta con nombres
+            sql_base += " ORDER BY il.id DESC"
+            
+            # Ejecutar consulta
+            result = self.db.execute(text(sql_base), params).fetchall()
+            
+            # Construir respuesta
             licencias = []
-            for lic, tipo_nombre, prov_nombre, prod_nombre, metodo_nombre in resultados:
-                lic_dict = lic.to_dict()
-                lic_dict['tipoServicio'] = tipo_nombre
-                lic_dict['proveedor'] = prov_nombre
-                lic_dict['producto'] = prod_nombre
-                lic_dict['metodoPago'] = metodo_nombre
+            for row in result:
+                lic_dict = {
+                    'id': row.id,
+                    'tipoServicioId': row.tipo_servicio_id,
+                    'tipoServicio': row.tipo_servicio_nombre,
+                    'proveedorId': row.proveedor_id,
+                    'proveedor': row.proveedor_nombre,
+                    'productoId': row.producto_id,
+                    'producto': row.producto_nombre,
+                    'cantidad': row.cantidad,
+                    'frecuencia': row.frecuencia,
+                    'fechaCompra': row.fecha_compra.isoformat() if row.fecha_compra else None,
+                    'fechaVencimiento': row.fecha_vencimiento.isoformat() if row.fecha_vencimiento else None,
+                    'valor': float(row.valor) if row.valor else 0,
+                    'metodoPagoId': row.metodo_pago_id,
+                    'metodoPago': row.metodo_pago_nombre,
+                    'responsable': {'nombre': row.responsable_nombre, 'cargo': row.responsable_cargo} if row.responsable_nombre else None,
+                    'observaciones': row.observaciones,
+                    'baja': bool(row.baja),
+                    'fechaBaja': row.fecha_baja.isoformat() if row.fecha_baja else None,
+                    'motivoBaja': row.motivo_baja
+                }
                 licencias.append(lic_dict)
             
             return licencias
@@ -2285,38 +2364,47 @@ class Querys:
         """Obtiene una licencia específica por su ID"""
 
         try:
-            resultado = self.db.query(
-                IntranetLicenciasModel,
-                IntranetTiposServicioModel.nombre.label('tipo_servicio_nombre'),
-                IntranetProveedoresModel.nombre.label('proveedor_nombre'),
-                IntranetProductosServiciosModel.nombre.label('producto_nombre'),
-                IntranetMetodosPagoModel.nombre.label('metodo_pago_nombre')
-            ).outerjoin(
-                IntranetTiposServicioModel, 
-                IntranetLicenciasModel.tipo_servicio_id == IntranetTiposServicioModel.id
-            ).outerjoin(
-                IntranetProveedoresModel, 
-                IntranetLicenciasModel.proveedor_id == IntranetProveedoresModel.id
-            ).outerjoin(
-                IntranetProductosServiciosModel, 
-                IntranetLicenciasModel.producto_id == IntranetProductosServiciosModel.id
-            ).outerjoin(
-                IntranetMetodosPagoModel, 
-                IntranetLicenciasModel.metodo_pago_id == IntranetMetodosPagoModel.id
-            ).filter(
-                IntranetLicenciasModel.id == licencia_id,
-                IntranetLicenciasModel.estado == 1
-            ).first()
+            sql = """
+                SELECT 
+                    il.*,
+                    its.nombre as tipo_servicio_nombre,
+                    t.nombres as proveedor_nombre,
+                    ips.nombre as producto_nombre,
+                    imp.nombre as metodo_pago_nombre
+                FROM intranet_licencias il
+                LEFT JOIN intranet_tipos_servicio its ON il.tipo_servicio_id = its.id
+                LEFT JOIN terceros t ON il.proveedor_id = t.nit
+                LEFT JOIN intranet_productos_servicios ips ON il.producto_id = ips.id
+                LEFT JOIN intranet_metodos_pago imp ON il.metodo_pago_id = imp.id
+                WHERE il.id = :licencia_id AND il.estado = 1
+            """
             
-            if not resultado:
+            result = self.db.execute(text(sql), {'licencia_id': licencia_id}).fetchone()
+            
+            if not result:
                 raise CustomException("Licencia no encontrada.")
             
-            lic, tipo_nombre, prov_nombre, prod_nombre, metodo_nombre = resultado
-            lic_dict = lic.to_dict()
-            lic_dict['tipoServicio'] = tipo_nombre
-            lic_dict['proveedor'] = prov_nombre
-            lic_dict['producto'] = prod_nombre
-            lic_dict['metodoPago'] = metodo_nombre
+            lic_dict = {
+                'id': result.id,
+                'tipoServicioId': result.tipo_servicio_id,
+                'tipoServicio': result.tipo_servicio_nombre,
+                'proveedorId': result.proveedor_id,
+                'proveedor': result.proveedor_nombre,
+                'productoId': result.producto_id,
+                'producto': result.producto_nombre,
+                'cantidad': result.cantidad,
+                'frecuencia': result.frecuencia,
+                'fechaCompra': result.fecha_compra.isoformat() if result.fecha_compra else None,
+                'fechaVencimiento': result.fecha_vencimiento.isoformat() if result.fecha_vencimiento else None,
+                'valor': float(result.valor) if result.valor else 0,
+                'metodoPagoId': result.metodo_pago_id,
+                'metodoPago': result.metodo_pago_nombre,
+                'responsable': {'nombre': result.responsable_nombre, 'cargo': result.responsable_cargo} if result.responsable_nombre else None,
+                'observaciones': result.observaciones,
+                'baja': bool(result.baja),
+                'fechaBaja': result.fecha_baja.isoformat() if result.fecha_baja else None,
+                'motivoBaja': result.motivo_baja
+            }
             
             # Agregar historial a la respuesta
             historial = self.db.query(IntranetLicenciasHistorialModel).filter(
@@ -2615,15 +2703,18 @@ class Querys:
         """Obtiene todos los proveedores activos"""
 
         try:
-            proveedores = self.db.query(IntranetProveedoresModel).filter(
-                IntranetProveedoresModel.estado == 1
-            ).order_by(IntranetProveedoresModel.nombre.asc()).all()
-            
-            return [p.to_dict() for p in proveedores]
-            
-        except Exception as e:
-            print(f"Error obteniendo proveedores: {e}")
-            raise CustomException(f"Error obteniendo proveedores: {str(e)}")
+            sql = """
+                SELECT nit AS id, nombres AS nombre 
+                FROM terceros WHERE concepto_1 in (1, 3) ORDER BY nombre;"""
+
+            result = self.db.execute(text(sql)).fetchall()
+            return [dict(row._mapping) for row in result] if result else []
+        except CustomException as e:
+            traceback.print_exc()
+            print(f"Error al obtener proveedores: {e}")
+            raise CustomException(f"{e}")
+        finally:
+            self.db.close()
 
     def obtener_productos_servicios(self):
         """Obtiene todos los productos/servicios activos"""
@@ -2704,6 +2795,58 @@ class Querys:
             self.db.rollback()
             print(f"Error creando producto/servicio: {e}")
             raise CustomException(f"Error creando producto/servicio: {str(e)}")
+
+    def crear_tipo_servicio(self, nombre):
+        """Crea un nuevo tipo de servicio"""
+        
+        try:
+            # Verificar que no exista
+            existe = self.db.query(IntranetTiposServicioModel).filter(
+                IntranetTiposServicioModel.nombre == nombre
+            ).first()
+            
+            if existe:
+                return existe.to_dict()
+            
+            nuevo_tipo = IntranetTiposServicioModel()
+            nuevo_tipo.nombre = nombre
+            
+            self.db.add(nuevo_tipo)
+            self.db.commit()
+            self.db.refresh(nuevo_tipo)
+            
+            return nuevo_tipo.to_dict()
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando tipo de servicio: {e}")
+            raise CustomException(f"Error creando tipo de servicio: {str(e)}")
+
+    def crear_metodo_pago(self, nombre):
+        """Crea un nuevo método de pago"""
+        
+        try:
+            # Verificar que no exista
+            existe = self.db.query(IntranetMetodosPagoModel).filter(
+                IntranetMetodosPagoModel.nombre == nombre
+            ).first()
+            
+            if existe:
+                return existe.to_dict()
+            
+            nuevo_metodo = IntranetMetodosPagoModel()
+            nuevo_metodo.nombre = nombre
+            
+            self.db.add(nuevo_metodo)
+            self.db.commit()
+            self.db.refresh(nuevo_metodo)
+            
+            return nuevo_metodo.to_dict()
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando método de pago: {e}")
+            raise CustomException(f"Error creando método de pago: {str(e)}")
 
     # ===============================================
     # ENDPOINTS PARA REVISIONES GENERALES

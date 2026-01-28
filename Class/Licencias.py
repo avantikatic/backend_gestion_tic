@@ -139,7 +139,10 @@ class Licencias:
             return self.tools.output(500, "Error obteniendo tipos de servicio.", [])
 
     def obtener_proveedores(self):
-        """Obtiene todos los proveedores activos"""
+        """
+        Obtiene todos los proveedores activos desde la tabla 'terceros'.
+        Retorna lista de objetos con estructura: [{id: nit, nombre: nombres}, ...]
+        """
         try:
             proveedores = self.querys.obtener_proveedores()
             return self.tools.output(200, "Proveedores obtenidos exitosamente.", proveedores)
@@ -217,6 +220,46 @@ class Licencias:
         except Exception as e:
             print(f"Error creando producto/servicio: {e}")
             return self.tools.output(500, "Error creando producto/servicio.", {})
+
+    def crear_tipo_servicio(self, nombre):
+        """Crea un nuevo tipo de servicio"""
+        try:
+            nombre_clean = nombre.strip()
+            if not nombre_clean:
+                return self.tools.output(400, "El nombre del tipo de servicio es requerido.", {})
+            
+            tipo_servicio = self.querys.crear_tipo_servicio(nombre_clean)
+            
+            if not tipo_servicio:
+                return self.tools.output(500, "Error: No se pudo crear el tipo de servicio.", {})
+            
+            return self.tools.output(201, "Tipo de servicio creado exitosamente.", tipo_servicio)
+                
+        except CustomException as ce:
+            return self.tools.output(400, str(ce), {})
+        except Exception as e:
+            print(f"Error creando tipo de servicio: {e}")
+            return self.tools.output(500, "Error creando tipo de servicio.", {})
+
+    def crear_metodo_pago(self, nombre):
+        """Crea un nuevo método de pago"""
+        try:
+            nombre_clean = nombre.strip()
+            if not nombre_clean:
+                return self.tools.output(400, "El nombre del método de pago es requerido.", {})
+            
+            metodo_pago = self.querys.crear_metodo_pago(nombre_clean)
+            
+            if not metodo_pago:
+                return self.tools.output(500, "Error: No se pudo crear el método de pago.", {})
+            
+            return self.tools.output(201, "Método de pago creado exitosamente.", metodo_pago)
+                
+        except CustomException as ce:
+            return self.tools.output(400, str(ce), {})
+        except Exception as e:
+            print(f"Error creando método de pago: {e}")
+            return self.tools.output(500, "Error creando método de pago.", {})
 
 
 

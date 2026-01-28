@@ -135,6 +135,24 @@ def crear_producto_servicio(request: Request, db: Session = Depends(get_db)):
     response = Licencias(db).crear_producto_servicio(nombre)
     return response
 
+@licencias_router.post('/catalogos/tipos-servicio/crear', tags=["CATALOGOS"], response_model=dict)
+@http_decorator
+def crear_tipo_servicio(request: Request, db: Session = Depends(get_db)):
+    """Crea un nuevo tipo de servicio"""
+    data = getattr(request.state, "json_data", {})
+    nombre = data.get('nombre', '')
+    response = Licencias(db).crear_tipo_servicio(nombre)
+    return response
+
+@licencias_router.post('/catalogos/metodos-pago/crear', tags=["CATALOGOS"], response_model=dict)
+@http_decorator
+def crear_metodo_pago(request: Request, db: Session = Depends(get_db)):
+    """Crea un nuevo método de pago"""
+    data = getattr(request.state, "json_data", {})
+    nombre = data.get('nombre', '')
+    response = Licencias(db).crear_metodo_pago(nombre)
+    return response
+
 # ===================================================
 # OTROS ENDPOINTS
 # ===================================================
