@@ -26,6 +26,9 @@ from Models.IntranetLicenciasHistorialModel import IntranetLicenciasHistorialMod
 from Models.IntranetTipoRevisionModel import IntranetTipoRevisionModel
 from Models.IntranetRevisionesModel import IntranetRevisionesModel
 from Models.IntranetVersionesLicenciasModel import IntranetVersionesLicenciasModel
+from Models.IntranetGscEstadosModel import IntranetGscEstados
+from Models.IntranetGscSistemasAfectadosModel import IntranetGscSistemasAfectados
+from Models.IntranetGscModulosModel import IntranetGscModulos
 
 import hashlib
 
@@ -3053,3 +3056,49 @@ class Querys:
             print(f"Error eliminando versión: {e}")
             print(f"Traceback: {traceback.format_exc()}")
             raise CustomException(f"Error eliminando versión: {str(e)}")
+
+    # Querys para Gestión de Seguridad y Continuidad (GSC)
+    def obtener_estados_gsc(self):
+        """
+        Obtiene todos los estados disponibles para el módulo GSC
+        """
+        try:
+            estados = self.db.query(IntranetGscEstados).filter(
+                IntranetGscEstados.activo == True
+            ).all()
+            
+            return [{'id': estado.id, 'nombre': estado.nombre} for estado in estados]
+            
+        except Exception as e:
+            print(f"Error obteniendo estados GSC: {e}")
+            return []
+
+    def obtener_sistemas_afectados_gsc(self):
+        """
+        Obtiene todos los sistemas afectados disponibles para el módulo GSC
+        """
+        try:
+            sistemas = self.db.query(IntranetGscSistemasAfectados).filter(
+                IntranetGscSistemasAfectados.activo == True
+            ).all()
+            
+            return [{'id': sistema.id, 'nombre': sistema.nombre, 'descripcion': sistema.descripcion} for sistema in sistemas]
+            
+        except Exception as e:
+            print(f"Error obteniendo sistemas afectados GSC: {e}")
+            return []
+
+    def obtener_modulos_gsc(self):
+        """
+        Obtiene todos los módulos disponibles para el módulo GSC ordenados por campo 'orden'
+        """
+        try:
+            modulos = self.db.query(IntranetGscModulos).filter(
+                IntranetGscModulos.activo == True
+            ).order_by(IntranetGscModulos.orden).all()
+            
+            return [{'id': modulo.id, 'codigo': modulo.codigo, 'nombre': modulo.nombre, 'descripcion': modulo.descripcion, 'color_clase': modulo.color_clase, 'orden': modulo.orden} for modulo in modulos]
+            
+        except Exception as e:
+            print(f"Error obteniendo módulos GSC: {e}")
+            return []
