@@ -17,6 +17,7 @@ class IntranetLicenciasModel(BASE):
     fecha_vencimiento = Column(Date)
     valor = Column(Numeric(18, 2))
     metodo_pago_id = Column(Integer, ForeignKey('intranet_metodos_pago.id'))
+    tipo_moneda_id = Column(Integer, ForeignKey('intranet_tipo_moneda.id'))
     responsable_nombre = Column(String(200))
     responsable_cargo = Column(String(200))
     observaciones = Column(Text)
@@ -38,6 +39,7 @@ class IntranetLicenciasModel(BASE):
         self.fecha_vencimiento = data.get('fechaVencimiento')
         self.valor = data.get('valor')
         self.metodo_pago_id = data.get('metodoPagoId')
+        self.tipo_moneda_id = data.get('tipoMonedaId')
         self.responsable_nombre = data.get('responsable', {}).get('nombre')
         self.responsable_cargo = data.get('responsable', {}).get('cargo')
         self.observaciones = data.get('observaciones')
@@ -58,6 +60,7 @@ class IntranetLicenciasModel(BASE):
             'fechaVencimiento': self.fecha_vencimiento.isoformat() if self.fecha_vencimiento else None,
             'valor': float(self.valor) if self.valor else 0,
             'metodoPagoId': self.metodo_pago_id,
+            'tipoMonedaId': self.tipo_moneda_id,
             'responsable': {
                 'nombre': self.responsable_nombre,
                 'cargo': self.responsable_cargo
