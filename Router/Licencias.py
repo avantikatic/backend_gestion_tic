@@ -117,6 +117,13 @@ def obtener_metodos_pago(request: Request, db: Session = Depends(get_db)):
     response = Licencias(db).obtener_metodos_pago()
     return response
 
+@licencias_router.post('/catalogos/tipos-moneda', tags=["CATALOGOS"], response_model=dict)
+@http_decorator
+def obtener_tipos_moneda(request: Request, db: Session = Depends(get_db)):
+    """Obtiene todos los tipos de moneda disponibles"""
+    response = Licencias(db).obtener_tipos_moneda()
+    return response
+
 @licencias_router.post('/catalogos/proveedores/crear', tags=["CATALOGOS"], response_model=dict)
 @http_decorator
 def crear_proveedor(request: Request, db: Session = Depends(get_db)):

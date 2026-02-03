@@ -26,6 +26,7 @@ from Models.IntranetLicenciasHistorialModel import IntranetLicenciasHistorialMod
 from Models.IntranetTipoRevisionModel import IntranetTipoRevisionModel
 from Models.IntranetRevisionesModel import IntranetRevisionesModel
 from Models.IntranetVersionesLicenciasModel import IntranetVersionesLicenciasModel
+from Models.IntranetTipoMonedaModel import IntranetTipoMoneda
 
 import hashlib
 
@@ -2176,6 +2177,7 @@ class Querys:
                     'valor': float(row.valor) if row.valor else 0,
                     'metodoPagoId': row.metodo_pago_id,
                     'metodoPago': row.metodo_pago_nombre,
+                    'tipoMonedaId': row.tipo_moneda_id,
                     'responsable': {'nombre': row.responsable_nombre, 'cargo': row.responsable_cargo} if row.responsable_nombre else None,
                     'observaciones': row.observaciones,
                     'baja': bool(row.baja),
@@ -2346,6 +2348,7 @@ class Querys:
                     'valor': float(row.valor) if row.valor else 0,
                     'metodoPagoId': row.metodo_pago_id,
                     'metodoPago': row.metodo_pago_nombre,
+                    'tipoMonedaId': row.tipo_moneda_id,
                     'responsable': {'nombre': row.responsable_nombre, 'cargo': row.responsable_cargo} if row.responsable_nombre else None,
                     'observaciones': row.observaciones,
                     'baja': bool(row.baja),
@@ -2400,6 +2403,7 @@ class Querys:
                 'valor': float(result.valor) if result.valor else 0,
                 'metodoPagoId': result.metodo_pago_id,
                 'metodoPago': result.metodo_pago_nombre,
+                'tipoMonedaId': result.tipo_moneda_id,
                 'responsable': {'nombre': result.responsable_nombre, 'cargo': result.responsable_cargo} if result.responsable_nombre else None,
                 'observaciones': result.observaciones,
                 'baja': bool(result.baja),
@@ -2545,6 +2549,20 @@ class Querys:
                         'nuevo': metodo_nuevo.nombre if metodo_nuevo else str(data['metodoPagoId'])
                     }
                 licencia.metodo_pago_id = data['metodoPagoId']
+                
+            if 'tipoMonedaId' in data:
+                if licencia.tipo_moneda_id != data['tipoMonedaId']:
+                    moneda_anterior = self.db.query(IntranetTipoMoneda).filter(
+                        IntranetTipoMoneda.id == licencia.tipo_moneda_id
+                    ).first()
+                    moneda_nueva = self.db.query(IntranetTipoMoneda).filter(
+                        IntranetTipoMoneda.id == data['tipoMonedaId']
+                    ).first()
+                    cambios_detectados['Tipo de Moneda'] = {
+                        'anterior': moneda_anterior.nombre if moneda_anterior else str(licencia.tipo_moneda_id),
+                        'nuevo': moneda_nueva.nombre if moneda_nueva else str(data['tipoMonedaId'])
+                    }
+                licencia.tipo_moneda_id = data['tipoMonedaId']
                 
             if 'responsable' in data and isinstance(data['responsable'], dict):
                 nuevo_nombre = data['responsable'].get('nombre')
@@ -2744,6 +2762,20 @@ class Querys:
         except Exception as e:
             print(f"Error obteniendo métodos de pago: {e}")
             raise CustomException(f"Error obteniendo métodos de pago: {str(e)}")
+
+    def obtener_tipos_moneda(self):
+        """Obtiene todos los tipos de moneda activos"""
+        
+        try:
+            tipos = self.db.query(IntranetTipoMoneda).filter(
+                IntranetTipoMoneda.activo == True
+            ).order_by(IntranetTipoMoneda.codigo.asc()).all()
+            
+            return [t.to_dict() for t in tipos]
+            
+        except Exception as e:
+            print(f"Error obteniendo tipos de moneda: {e}")
+            raise CustomException(f"Error obteniendo tipos de moneda: {str(e)}")
 
     def crear_proveedor(self, nombre):
         """Crea un nuevo proveedor"""

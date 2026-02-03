@@ -177,6 +177,18 @@ class Licencias:
             print(f"Error obteniendo métodos de pago: {e}")
             return self.tools.output(500, "Error obteniendo métodos de pago.", [])
 
+    def obtener_tipos_moneda(self):
+        """Obtiene todos los tipos de moneda activos"""
+        try:
+            tipos = self.querys.obtener_tipos_moneda()
+            return self.tools.output(200, "Tipos de moneda obtenidos exitosamente.", tipos)
+                
+        except CustomException as ce:
+            return self.tools.output(500, str(ce), [])
+        except Exception as e:
+            print(f"Error obteniendo tipos de moneda: {e}")
+            return self.tools.output(500, "Error obteniendo tipos de moneda.", [])
+
     def crear_proveedor(self, nombre):
         """Crea un nuevo proveedor"""
         try:
