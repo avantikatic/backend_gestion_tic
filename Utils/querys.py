@@ -3423,6 +3423,10 @@ class Querys:
             # PASO 5: Commit de toda la transacción
             self.db.commit()
             
+            # PASO 6: Enviar notificación a gerencia si está marcado
+            if data.get('notificar_gerencia', False):
+                self.enviar_notificacion_gerencia_gsc(id_registro)
+            
             return {
                 'success': True,
                 'id_registro': id_registro,
@@ -3978,6 +3982,10 @@ class Querys:
             
             self.db.commit()
             
+            # Enviar notificación a gerencia si está marcado
+            if registro.notificar_gerencia:
+                self.enviar_notificacion_gerencia_gsc(id_registro)
+            
             return {
                 'success': True,
                 'message': 'Registro actualizado exitosamente'
@@ -4022,3 +4030,480 @@ class Querys:
                 'success': False,
                 'message': f'Error eliminando registro: {str(e)}'
             }
+
+    def _generar_html_notificacion_gsc(self, registro_data: dict, modulo_data: dict, codigo_modulo: str, id_registro: int) -> str:
+        """
+        Genera el HTML para el correo de notificación a gerencia
+        """
+        # Obtener nombres desde IDs
+        modulo_nombre = ""
+        estado_nombre = ""
+        
+        if 'id_modulo' in registro_data:
+            modulo = self.db.query(IntranetGscModulos).filter(
+                IntranetGscModulos.id == registro_data['id_modulo']
+            ).first()
+            if modulo:
+                modulo_nombre = modulo.nombre
+        
+        if 'id_estado' in registro_data:
+            estado = self.db.query(IntranetGscEstados).filter(
+                IntranetGscEstados.id == registro_data['id_estado']
+            ).first()
+            if estado:
+                estado_nombre = estado.nombre
+        
+        # Obtener sistemas afectados
+        sistemas_query = self.db.query(
+            IntranetGscSistemasAfectados
+        ).join(
+            IntranetGscRegistrosSistemas,
+            IntranetGscRegistrosSistemas.id_sistema == IntranetGscSistemasAfectados.id
+        ).filter(
+            IntranetGscRegistrosSistemas.id_registro == id_registro
+        ).all()
+        
+        sistemas_html = ""
+        if sistemas_query:
+            sistemas_lista = ", ".join([s.nombre for s in sistemas_query])
+            sistemas_html = f"""
+            <tr>
+                <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold; width: 200px; vertical-align: top;">Sistemas Afectados:</td>
+                <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+                    <div style="background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; border-radius: 4px;">
+                        {sistemas_lista}
+                    </div>
+                </td>
+            </tr>
+            """
+        
+        # Verde pastel oscuro: #5a9e7a
+        color_principal = "#5a9e7a"
+        color_borde = "#4a8a6a"
+        
+        # Generar sección específica del módulo
+        seccion_modulo = ""
+        
+        if codigo_modulo == 'SEG':
+            fuente_nombre = ""
+            impacto_nombre = ""
+            
+            if modulo_data.get('id_fuente_seguridad'):
+                fuente = self.db.query(IntranetGscFuentesSeguridad).filter(
+                    IntranetGscFuentesSeguridad.id == modulo_data['id_fuente_seguridad']
+                ).first()
+                if fuente:
+                    fuente_nombre = fuente.nombre
+            
+            if modulo_data.get('id_impacto'):
+                impacto = self.db.query(IntranetGscImpactos).filter(
+                    IntranetGscImpactos.id == modulo_data['id_impacto']
+                ).first()
+                if impacto:
+                    impacto_nombre = impacto.nombre
+            
+            fecha_incidente = modulo_data.get('fecha_hora_incidente', '')
+            if isinstance(fecha_incidente, datetime):
+                fecha_incidente = fecha_incidente.strftime('%Y-%m-%d %H:%M:%S')
+            
+            seccion_modulo = f"""
+            <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="color: {color_principal}; border-bottom: 3px solid {color_borde}; padding-bottom: 10px; margin-top: 0;">📊 Información de Seguridad</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold; width: 200px; border-bottom: 1px solid #e0e0e0;">Fecha/Hora Incidente:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{fecha_incidente}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Fuente:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{fuente_nombre}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Tipo Amenaza:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('tipo_amenaza', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Impacto:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">
+                            <span style="background-color: #ffeaa7; padding: 4px 12px; border-radius: 12px; font-weight: bold;">{impacto_nombre}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Responsable TIC:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('responsable_tic', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold; vertical-align: top;">Acciones Tomadas:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa;">{modulo_data.get('acciones_tomadas', '')}</td>
+                    </tr>
+                </table>
+            </div>
+            """
+        
+        elif codigo_modulo == 'DISP':
+            seccion_modulo = f"""
+            <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="color: {color_principal}; border-bottom: 3px solid {color_borde}; padding-bottom: 10px; margin-top: 0;">📈 Información de Disponibilidad</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold; width: 200px; border-bottom: 1px solid #e0e0e0;">Servicio Afectado:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('servicio_afectado', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Tipo Evento:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('tipo_evento', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Tiempo Indisponible:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">
+                            <span style="background-color: #ff7675; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold;">{modulo_data.get('tiempo_indisponible_min', 0)} minutos</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">SLA Afectado:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">
+                            <span style="background-color: {'#ff7675' if modulo_data.get('sla_afectado') else '#55efc4'}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold;">{'Sí' if modulo_data.get('sla_afectado') else 'No'}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold; vertical-align: top;">Acciones:</td>
+                        <td style="padding: 12px; background-color: #ffffff;">{modulo_data.get('acciones', '')}</td>
+                    </tr>
+                </table>
+            </div>
+            """
+        
+        elif codigo_modulo == 'MNT':
+            riesgo_nombre = ""
+            if modulo_data.get('id_riesgo'):
+                riesgo = self.db.query(IntranetGscRiesgos).filter(
+                    IntranetGscRiesgos.id == modulo_data['id_riesgo']
+                ).first()
+                if riesgo:
+                    riesgo_nombre = riesgo.nombre
+            
+            fecha_inicio = modulo_data.get('fecha_inicio', '')
+            fecha_fin = modulo_data.get('fecha_fin', '')
+            if isinstance(fecha_inicio, datetime):
+                fecha_inicio = fecha_inicio.strftime('%Y-%m-%d %H:%M:%S')
+            if isinstance(fecha_fin, datetime):
+                fecha_fin = fecha_fin.strftime('%Y-%m-%d %H:%M:%S')
+            
+            seccion_modulo = f"""
+            <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="color: {color_principal}; border-bottom: 3px solid {color_borde}; padding-bottom: 10px; margin-top: 0;">🔧 Información de Mantenimiento</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold; width: 200px; border-bottom: 1px solid #e0e0e0;">Área:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('area', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Tipo Mantenimiento:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('tipo_mantenimiento', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Fecha Inicio:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{fecha_inicio}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Fecha Fin:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{fecha_fin}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Requiere Parada:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">
+                            <span style="background-color: {'#ff7675' if modulo_data.get('requiere_parada') else '#55efc4'}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold;">{'Sí' if modulo_data.get('requiere_parada') else 'No'}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Riesgo:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa;">
+                            <span style="background-color: #ffeaa7; padding: 4px 12px; border-radius: 12px; font-weight: bold;">{riesgo_nombre}</span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            """
+        
+        elif codigo_modulo == 'DR':
+            fecha_inicio = modulo_data.get('fecha_inicio', '')
+            fecha_fin = modulo_data.get('fecha_fin', '')
+            if isinstance(fecha_inicio, datetime):
+                fecha_inicio = fecha_inicio.strftime('%Y-%m-%d %H:%M:%S')
+            if isinstance(fecha_fin, datetime):
+                fecha_fin = fecha_fin.strftime('%Y-%m-%d %H:%M:%S')
+            
+            seccion_modulo = f"""
+            <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="color: {color_principal}; border-bottom: 3px solid {color_borde}; padding-bottom: 10px; margin-top: 0;">🔄 Información de Disaster Recovery</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold; width: 200px; border-bottom: 1px solid #e0e0e0;">Escenario:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('escenario', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Fecha Inicio:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{fecha_inicio}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Fecha Fin:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{fecha_fin}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold; vertical-align: top;">Objetivo:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('objetivo', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold; vertical-align: top;">Resultado:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('resultado', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold; vertical-align: top;">Hallazgos:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('hallazgos', '')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold; vertical-align: top;">Lecciones Aprendidas:</td>
+                        <td style="padding: 12px; background-color: #ffffff;">{modulo_data.get('lecciones_aprendidas', '')}</td>
+                    </tr>
+                </table>
+            </div>
+            """
+        
+        # HTML completo del correo
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ 
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                    line-height: 1.6; 
+                    color: #333; 
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 0;
+                }}
+                .container {{ 
+                    max-width: 800px; 
+                    margin: 20px auto; 
+                    background-color: #ffffff;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    border-radius: 8px;
+                    overflow: hidden;
+                }}
+                .header {{ 
+                    background: linear-gradient(135deg, {color_principal} 0%, {color_borde} 100%);
+                    color: white; 
+                    padding: 30px 20px; 
+                    text-align: center;
+                }}
+                .header img {{
+                    max-width: 180px;
+                    background-color: white;
+                    padding: 10px;
+                    border-radius: 8px;
+                    margin-bottom: 15px;
+                }}
+                .header h1 {{
+                    margin: 10px 0;
+                    font-size: 28px;
+                    font-weight: 600;
+                }}
+                .header p {{
+                    margin: 5px 0 0 0;
+                    font-size: 16px;
+                    opacity: 0.95;
+                }}
+                .content {{ 
+                    background-color: #ffffff; 
+                    padding: 35px;
+                }}
+                .info-general {{
+                    background: linear-gradient(135deg, #fff5f5 0%, #ffe5e5 100%);
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }}
+                .info-general h3 {{
+                    color: #e74c3c;
+                    border-bottom: 3px solid #c0392b;
+                    padding-bottom: 10px;
+                    margin-top: 0;
+                }}
+                .footer {{ 
+                    background-color: #2c3e50; 
+                    color: #ecf0f1;
+                    padding: 20px; 
+                    text-align: center; 
+                    font-size: 13px;
+                }}
+                .footer p {{
+                    margin: 5px 0;
+                }}
+                .footer strong {{
+                    color: {color_principal};
+                    font-size: 16px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <img src="cid:company_logo" alt="Avantika">
+                    <h1>🔔 Notificación de Gestión de Continuidad</h1>
+                    <p>Módulo: <strong>{modulo_nombre}</strong></p>
+                </div>
+                
+                <div class="content">
+                    {seccion_modulo}
+                    
+                    <div class="info-general">
+                        <h3>📋 Información General</h3>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr>
+                                <td style="padding: 12px; background-color: #ffffff; font-weight: bold; width: 200px; border-bottom: 1px solid #e0e0e0;">Resumen:</td>
+                                <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{registro_data.get('resumen', '')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Estado:</td>
+                                <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">
+                                    <span style="background-color: {color_principal}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold;">{estado_nombre}</span>
+                                </td>
+                            </tr>
+                            {sistemas_html}
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    <p>⚠️ Este mensaje fue generado automáticamente. Por favor, no responda a este correo.</p>
+                    <p><strong>AVANTIKA</strong> | Gestión TIC | Departamento de Tecnología</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html
+
+    def enviar_notificacion_gerencia_gsc(self, id_registro: int):
+        """
+        Envía notificación por correo a gerencia cuando se marca 'Notificar a Gerencia'
+        """
+        try:
+            # Obtener el registro completo
+            registro = self.db.query(IntranetGscRegistros).filter(
+                IntranetGscRegistros.id == id_registro
+            ).first()
+            
+            if not registro:
+                print(f"Registro {id_registro} no encontrado")
+                return False
+            
+            # Verificar si debe notificar
+            if not registro.notificar_gerencia:
+                return True  # No es error, simplemente no debe notificar
+            
+            # Obtener código del módulo
+            codigo_modulo = self._obtener_codigo_modulo(registro.id_modulo)
+            
+            # Preparar datos del registro
+            registro_data = {
+                'id_modulo': registro.id_modulo,
+                'resumen': registro.resumen,
+                'descripcion': registro.descripcion,
+                'id_estado': registro.id_estado
+            }
+            
+            # Obtener datos específicos del módulo
+            modulo_data = {}
+            
+            if codigo_modulo == 'SEG':
+                datos = self.db.query(IntranetGscRegistrosSeguridad).filter(
+                    IntranetGscRegistrosSeguridad.id_registro == id_registro
+                ).first()
+                if datos:
+                    modulo_data = {
+                        'fecha_hora_incidente': datos.fecha_hora_incidente,
+                        'id_fuente_seguridad': datos.id_fuente_seguridad,
+                        'tipo_amenaza': datos.tipo_amenaza,
+                        'id_impacto': datos.id_impacto,
+                        'responsable_tic': datos.responsable_tic,
+                        'acciones_tomadas': datos.acciones_tomadas
+                    }
+            
+            elif codigo_modulo == 'DISP':
+                datos = self.db.query(IntranetGscRegistrosDisponibilidad).filter(
+                    IntranetGscRegistrosDisponibilidad.id_registro == id_registro
+                ).first()
+                if datos:
+                    modulo_data = {
+                        'servicio_afectado': datos.servicio_afectado,
+                        'tipo_evento': datos.tipo_evento,
+                        'tiempo_indisponible_min': datos.tiempo_indisponible_min,
+                        'sla_afectado': datos.sla_afectado,
+                        'acciones': datos.acciones,
+                        'causa_raiz': datos.causa_raiz
+                    }
+            
+            elif codigo_modulo == 'MNT':
+                datos = self.db.query(IntranetGscRegistrosMantenimiento).filter(
+                    IntranetGscRegistrosMantenimiento.id_registro == id_registro
+                ).first()
+                if datos:
+                    modulo_data = {
+                        'area': datos.area,
+                        'tipo_mantenimiento': datos.tipo_mantenimiento,
+                        'fecha_inicio': datos.fecha_inicio,
+                        'fecha_fin': datos.fecha_fin,
+                        'requiere_parada': datos.requiere_parada,
+                        'id_riesgo': datos.id_riesgo
+                    }
+            
+            elif codigo_modulo == 'DR':
+                datos = self.db.query(IntranetGscRegistrosDisasterRecovery).filter(
+                    IntranetGscRegistrosDisasterRecovery.id_registro == id_registro
+                ).first()
+                if datos:
+                    modulo_data = {
+                        'escenario': datos.escenario,
+                        'fecha_inicio': datos.fecha_inicio,
+                        'fecha_fin': datos.fecha_fin,
+                        'objetivo': datos.objetivo,
+                        'resultado': datos.resultado,
+                        'hallazgos': datos.hallazgos,
+                        'lecciones_aprendidas': datos.lecciones_aprendidas
+                    }
+            
+            # Generar HTML del correo (pasar id_registro para obtener sistemas afectados)
+            html_body = self._generar_html_notificacion_gsc(registro_data, modulo_data, codigo_modulo, id_registro)
+            
+            # Enviar correo
+            tools = Tools()
+            subject = f"Notificación GSC - {codigo_modulo} - Registro #{id_registro}"
+            to_email = "sistemas@avantika.com.co"
+            cc_emails = []  # Sin copia
+            mail_sender = "tic@avantika.com.co"
+            
+            # Ruta del logo - Usar logo.png en la raíz del proyecto
+            import os
+            from pathlib import Path
+            logo_path = Path(__file__).parent.parent / "logo.png"
+            
+            tools.send_email_individual(
+                to_email=to_email,
+                cc_emails=cc_emails,
+                subject=subject,
+                body=html_body,
+                logo_path=str(logo_path) if logo_path.exists() else None,
+                mail_sender=mail_sender
+            )
+            
+            print(f"Notificación enviada exitosamente para registro {id_registro}")
+            return True
+            
+        except Exception as e:
+            print(f"Error enviando notificación: {e}")
+            traceback.print_exc()
+            return False
