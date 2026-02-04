@@ -29,6 +29,11 @@ from Models.IntranetVersionesLicenciasModel import IntranetVersionesLicenciasMod
 from Models.IntranetGscEstadosModel import IntranetGscEstados
 from Models.IntranetGscSistemasAfectadosModel import IntranetGscSistemasAfectados
 from Models.IntranetGscModulosModel import IntranetGscModulos
+from Models.IntranetGscTiposEvidenciaModel import IntranetGscTiposEvidencia
+from Models.IntranetGscOrigenesPlataformaModel import IntranetGscOrigenesPlataforma
+from Models.IntranetGscFuentesSeguridadModel import IntranetGscFuentesSeguridad
+from Models.IntranetGscImpactosModel import IntranetGscImpactos
+from Models.IntranetGscRiesgosModel import IntranetGscRiesgos
 from Models.IntranetTipoMonedaModel import IntranetTipoMoneda
 
 import hashlib
@@ -3133,4 +3138,78 @@ class Querys:
             
         except Exception as e:
             print(f"Error obteniendo módulos GSC: {e}")
+            return []
+    def obtener_tipos_evidencia_gsc(self):
+        """
+        Obtiene todos los tipos de evidencia disponibles para el módulo GSC
+        """
+        try:
+            tipos = self.db.query(IntranetGscTiposEvidencia).filter(
+                IntranetGscTiposEvidencia.activo == True
+            ).all()
+            
+            return [tipo.to_dict() for tipo in tipos]
+            
+        except Exception as e:
+            print(f"Error obteniendo tipos de evidencia GSC: {e}")
+            return []
+
+    def obtener_origenes_plataforma_gsc(self):
+        """
+        Obtiene todos los orígenes de plataforma disponibles para alertas en el módulo GSC
+        """
+        try:
+            origenes = self.db.query(IntranetGscOrigenesPlataforma).filter(
+                IntranetGscOrigenesPlataforma.activo == True
+            ).all()
+            
+            return [origen.to_dict() for origen in origenes]
+            
+        except Exception as e:
+            print(f"Error obteniendo orígenes de plataforma GSC: {e}")
+            return []
+
+    def obtener_fuentes_seguridad_gsc(self):
+        """
+        Obtiene todas las fuentes de seguridad disponibles para el módulo SEG
+        """
+        try:
+            fuentes = self.db.query(IntranetGscFuentesSeguridad).filter(
+                IntranetGscFuentesSeguridad.activo == True
+            ).all()
+            
+            return [fuente.to_dict() for fuente in fuentes]
+            
+        except Exception as e:
+            print(f"Error obteniendo fuentes de seguridad GSC: {e}")
+            return []
+
+    def obtener_impactos_gsc(self):
+        """
+        Obtiene todos los niveles de impacto disponibles para el módulo SEG ordenados por campo 'orden'
+        """
+        try:
+            impactos = self.db.query(IntranetGscImpactos).filter(
+                IntranetGscImpactos.activo == True
+            ).order_by(IntranetGscImpactos.orden).all()
+            
+            return [impacto.to_dict() for impacto in impactos]
+            
+        except Exception as e:
+            print(f"Error obteniendo impactos GSC: {e}")
+            return []
+
+    def obtener_riesgos_gsc(self):
+        """
+        Obtiene todos los niveles de riesgo disponibles para el módulo MNT ordenados por campo 'orden'
+        """
+        try:
+            riesgos = self.db.query(IntranetGscRiesgos).filter(
+                IntranetGscRiesgos.activo == True
+            ).order_by(IntranetGscRiesgos.orden).all()
+            
+            return [riesgo.to_dict() for riesgo in riesgos]
+            
+        except Exception as e:
+            print(f"Error obteniendo riesgos GSC: {e}")
             return []

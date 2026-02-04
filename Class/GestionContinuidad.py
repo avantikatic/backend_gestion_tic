@@ -46,3 +46,67 @@ class GestionContinuidad:
         except Exception as e:
             print(f"Error obteniendo módulos GSC: {e}")
             return self.tools.output(500, "Error obteniendo módulos.", {})
+    def obtener_tipos_evidencia_gsc(self):
+        """
+        Obtiene todos los tipos de evidencia disponibles para el módulo GSC
+        """
+        try:
+            tipos = self.querys.obtener_tipos_evidencia_gsc()
+            
+            return self.tools.output(200, "Tipos de evidencia obtenidos exitosamente.", tipos)
+                
+        except Exception as e:
+            print(f"Error obteniendo tipos de evidencia GSC: {e}")
+            return self.tools.output(500, "Error obteniendo tipos de evidencia.", {})
+
+    def obtener_origenes_plataforma_gsc(self):
+        """
+        Obtiene todos los orígenes de plataforma disponibles para alertas en el módulo GSC
+        """
+        try:
+            origenes = self.querys.obtener_origenes_plataforma_gsc()
+            
+            return self.tools.output(200, "Orígenes de plataforma obtenidos exitosamente.", origenes)
+                
+        except Exception as e:
+            print(f"Error obteniendo orígenes de plataforma GSC: {e}")
+            return self.tools.output(500, "Error obteniendo orígenes de plataforma.", {})
+
+    def obtener_fuentes_seguridad_gsc(self):
+        """
+        Obtiene todas las fuentes de seguridad disponibles para el módulo SEG
+        """
+        try:
+            fuentes = self.querys.obtener_fuentes_seguridad_gsc()
+            
+            return self.tools.output(200, "Fuentes de seguridad obtenidas exitosamente.", fuentes)
+                
+        except Exception as e:
+            print(f"Error obteniendo fuentes de seguridad GSC: {e}")
+            return self.tools.output(500, "Error obteniendo fuentes de seguridad.", {})
+
+    def obtener_impactos_gsc(self):
+        """
+        Obtiene todos los niveles de impacto disponibles para el módulo SEG
+        """
+        try:
+            impactos = self.querys.obtener_impactos_gsc()
+            
+            return self.tools.output(200, "Niveles de impacto obtenidos exitosamente.", impactos)
+                
+        except Exception as e:
+            print(f"Error obteniendo impactos GSC: {e}")
+            return self.tools.output(500, "Error obteniendo niveles de impacto.", {})
+
+    def obtener_riesgos_gsc(self):
+        """
+        Obtiene todos los niveles de riesgo disponibles para el módulo MNT
+        """
+        try:
+            riesgos = self.querys.obtener_riesgos_gsc()
+            
+            return self.tools.output(200, "Niveles de riesgo obtenidos exitosamente.", riesgos)
+                
+        except Exception as e:
+            print(f"Error obteniendo riesgos GSC: {e}")
+            return self.tools.output(500, "Error obteniendo niveles de riesgo.", {})
