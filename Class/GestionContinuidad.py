@@ -110,3 +110,95 @@ class GestionContinuidad:
         except Exception as e:
             print(f"Error obteniendo riesgos GSC: {e}")
             return self.tools.output(500, "Error obteniendo niveles de riesgo.", {})
+
+    def crear_registro_gsc(self, data: dict):
+        """
+        Crea un registro GSC completo con todas sus secciones
+        """
+        try:
+            resultado = self.querys.crear_registro_gsc_completo(data)
+            
+            if resultado['success']:
+                return self.tools.output(201, resultado['message'], {'id_registro': resultado['id_registro']})
+            else:
+                return self.tools.output(400, resultado['message'], {})
+                
+        except Exception as e:
+            print(f"Error creando registro GSC: {e}")
+            import traceback
+            traceback.print_exc()
+            return self.tools.output(500, "Error creando registro GSC.", {})
+
+    def obtener_registro_gsc(self, id_registro: int):
+        """
+        Obtiene un registro GSC completo por su ID
+        """
+        try:
+            registro = self.querys.obtener_registro_gsc_completo(id_registro)
+            
+            if registro:
+                return self.tools.output(200, "Registro obtenido exitosamente.", registro)
+            else:
+                return self.tools.output(404, "Registro no encontrado.", {})
+                
+        except Exception as e:
+            print(f"Error obteniendo registro GSC: {e}")
+            return self.tools.output(500, "Error obteniendo registro.", {})
+
+    def listar_registros_gsc(self, filtros: dict = None):
+        """
+        Lista registros GSC con filtros opcionales
+        """
+        try:
+            registros = self.querys.listar_registros_gsc(filtros)
+            
+            return self.tools.output(200, "Registros obtenidos exitosamente.", registros)
+                
+        except Exception as e:
+            print(f"Error listando registros GSC: {e}")
+            return self.tools.output(500, "Error listando registros.", {})
+
+    def obtener_contadores_gsc(self, filtros: dict = None):
+        """
+        Obtiene contadores de registros por estado para un módulo específico
+        """
+        try:
+            contadores = self.querys.obtener_contadores_gsc(filtros)
+            
+            return self.tools.output(200, "Contadores obtenidos exitosamente.", contadores)
+                
+        except Exception as e:
+            print(f"Error obteniendo contadores GSC: {e}")
+            return self.tools.output(500, "Error obteniendo contadores.", {})
+
+    def actualizar_registro_gsc(self, id_registro: int, data: dict):
+        """
+        Actualiza un registro GSC existente
+        """
+        try:
+            resultado = self.querys.actualizar_registro_gsc_completo(id_registro, data)
+            
+            if resultado['success']:
+                return self.tools.output(200, resultado['message'], {})
+            else:
+                return self.tools.output(400, resultado['message'], {})
+                
+        except Exception as e:
+            print(f"Error actualizando registro GSC: {e}")
+            return self.tools.output(500, "Error actualizando registro.", {})
+
+    def eliminar_registro_gsc(self, id_registro: int):
+        """
+        Elimina (desactiva) un registro GSC
+        """
+        try:
+            resultado = self.querys.eliminar_registro_gsc(id_registro)
+            
+            if resultado['success']:
+                return self.tools.output(200, resultado['message'], {})
+            else:
+                return self.tools.output(404, resultado['message'], {})
+                
+        except Exception as e:
+            print(f"Error eliminando registro GSC: {e}")
+            return self.tools.output(500, "Error eliminando registro.", {})

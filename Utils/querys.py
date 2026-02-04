@@ -1,4 +1,5 @@
 from Utils.tools import Tools, CustomException
+from Utils.file_handler import FileHandler
 from sqlalchemy import text, func, case, extract, and_, or_, Date, cast
 from datetime import datetime, date
 import json
@@ -35,6 +36,18 @@ from Models.IntranetGscFuentesSeguridadModel import IntranetGscFuentesSeguridad
 from Models.IntranetGscImpactosModel import IntranetGscImpactos
 from Models.IntranetGscRiesgosModel import IntranetGscRiesgos
 from Models.IntranetTipoMonedaModel import IntranetTipoMoneda
+from Models.IntranetGscRegistrosModel import IntranetGscRegistros
+from Models.IntranetGscRegistrosSistemasModel import IntranetGscRegistrosSistemas
+from Models.IntranetGscEvidenciasModel import IntranetGscEvidencias
+from Models.IntranetGscEvidenciasTicketModel import IntranetGscEvidenciasTicket
+from Models.IntranetGscEvidenciasCorreoModel import IntranetGscEvidenciasCorreo
+from Models.IntranetGscEvidenciasAlertaModel import IntranetGscEvidenciasAlerta
+from Models.IntranetGscEvidenciasCapturaModel import IntranetGscEvidenciasCaptura
+from Models.IntranetGscEvidenciasOtroModel import IntranetGscEvidenciasOtro
+from Models.IntranetGscRegistrosSeguridadModel import IntranetGscRegistrosSeguridad
+from Models.IntranetGscRegistrosDisponibilidadModel import IntranetGscRegistrosDisponibilidad
+from Models.IntranetGscRegistrosMantenimientoModel import IntranetGscRegistrosMantenimiento
+from Models.IntranetGscRegistrosDisasterRecoveryModel import IntranetGscRegistrosDisasterRecovery
 
 import hashlib
 
@@ -3213,3 +3226,799 @@ class Querys:
         except Exception as e:
             print(f"Error obteniendo riesgos GSC: {e}")
             return []
+
+    # ========================================
+    # MÉTODOS CRUD PARA REGISTROS GSC
+    # ========================================
+
+    def crear_registro_gsc_completo(self, data: dict):
+        """
+        Crea un registro GSC completo con todas sus secciones:
+        1. Información general (registro principal)
+        2. Sistemas afectados (relación muchos a muchos)
+        3. Evidencias (con sus datos específicos según tipo)
+        4. Datos específicos del módulo (SEG/DISP/MNT/DR)
+        
+        Parámetros:
+            data: Diccionario con la estructura completa del registro
+        
+        Retorna:
+            dict: {'success': bool, 'id_registro': int, 'message': str}
+        """
+        try:
+            # PASO 1: Crear registro principal
+            registro_data = {
+                'id_modulo': data.get('id_modulo'),
+                'resumen': data.get('resumen'),
+                'descripcion': data.get('descripcion'),
+                'id_estado': data.get('id_estado'),
+                'notificar_gerencia': data.get('notificar_gerencia', False),
+                'usuario_creacion': data.get('usuario_creacion')
+            }
+            
+            # Asignar fecha según el estado seleccionado
+            estado_id = data.get('id_estado')
+            fecha_actual = datetime.now()
+            
+            if estado_id == 1:  # Abierto
+                registro_data['fecha_abierto'] = fecha_actual
+            elif estado_id == 2:  # En análisis
+                registro_data['fecha_en_analisis'] = fecha_actual
+            elif estado_id == 3:  # Mitigado
+                registro_data['fecha_mitigado'] = fecha_actual
+            elif estado_id == 4:  # Cerrado
+                registro_data['fecha_cerrado'] = fecha_actual
+            
+            nuevo_registro = IntranetGscRegistros(registro_data)
+            self.db.add(nuevo_registro)
+            self.db.flush()  # Para obtener el ID sin hacer commit
+            
+            id_registro = nuevo_registro.id
+            
+            # PASO 2: Asociar sistemas afectados
+            sistemas_afectados = data.get('sistemas_afectados', [])
+            
+            for id_sistema in sistemas_afectados:
+                sistema_rel = IntranetGscRegistrosSistemas({
+                    'id_registro': id_registro,
+                    'id_sistema': id_sistema
+                })
+                self.db.add(sistema_rel)
+                self.db.flush()
+
+            # PASO 3: Crear evidencias con sus datos específicos
+            evidencias = data.get('evidencias', [])
+            for evidencia_data in evidencias:
+                # Crear evidencia base
+                evidencia = IntranetGscEvidencias({
+                    'id_registro': id_registro,
+                    'id_tipo_evidencia': evidencia_data.get('id_tipo_evidencia'),
+                    'observacion': evidencia_data.get('observacion'),
+                    'fecha_evidencia': evidencia_data.get('fecha_evidencia')
+                })
+                self.db.add(evidencia)
+                self.db.flush()
+                
+                id_evidencia = evidencia.id
+                tipo_evidencia = evidencia_data.get('id_tipo_evidencia')
+                datos_especificos = evidencia_data.get('datos_especificos', {})
+                
+                # Crear datos específicos según el tipo de evidencia
+                if tipo_evidencia == 1:  # Ticket
+                    ticket = IntranetGscEvidenciasTicket({
+                        'id_evidencia': id_evidencia,
+                        'numero_ticket': datos_especificos.get('numero_ticket'),
+                        'plataforma': datos_especificos.get('plataforma'),
+                        'url_ticket': datos_especificos.get('url_ticket')
+                    })
+                    self.db.add(ticket)
+                    
+                elif tipo_evidencia == 2:  # Correo
+                    correo = IntranetGscEvidenciasCorreo({
+                        'id_evidencia': id_evidencia,
+                        'asunto': datos_especificos.get('asunto'),
+                        'remitente': datos_especificos.get('remitente'),
+                        'destinatarios': datos_especificos.get('destinatarios'),
+                        'fecha_envio': datos_especificos.get('fecha_envio')
+                    })
+                    self.db.add(correo)
+                    
+                elif tipo_evidencia == 3:  # Alerta
+                    alerta = IntranetGscEvidenciasAlerta({
+                        'id_evidencia': id_evidencia,
+                        'id_origen_plataforma': datos_especificos.get('id_origen_plataforma'),
+                        'nombre_alerta': datos_especificos.get('nombre_alerta'),
+                        'severidad': datos_especificos.get('severidad'),
+                        'fecha_alerta': datos_especificos.get('fecha_alerta'),
+                        'codigo_alerta': datos_especificos.get('codigo_alerta')
+                    })
+                    self.db.add(alerta)
+                    
+                elif tipo_evidencia == 4:  # Captura
+                    # Guardar archivo físico
+                    file_handler = FileHandler()
+                    base64_data = datos_especificos.get('archivo_base64')
+                    nombre_original = datos_especificos.get('nombre_archivo', 'captura.png')
+                    
+                    if base64_data:
+                        archivo_info = file_handler.guardar_imagen_base64(base64_data, nombre_original)
+                        captura = IntranetGscEvidenciasCaptura({
+                            'id_evidencia': id_evidencia,
+                            'nombre_archivo': archivo_info['nombre_archivo'],
+                            'ruta_archivo': archivo_info['ruta_relativa'],
+                            'archivo_base64': None,  # No guardar base64 en BD
+                            'tipo_mime': archivo_info['tipo_mime'],
+                            'tamano_bytes': archivo_info['tamano_bytes']
+                        })
+                        self.db.add(captura)
+                    
+                elif tipo_evidencia == 5:  # Otro
+                    otro = IntranetGscEvidenciasOtro({
+                        'id_evidencia': id_evidencia,
+                        'descripcion_tipo': datos_especificos.get('descripcion_tipo'),
+                        'detalles': datos_especificos.get('detalles'),
+                        'referencia': datos_especificos.get('referencia')
+                    })
+                    self.db.add(otro)
+            
+            # PASO 4: Crear datos específicos del módulo
+            datos_modulo = data.get('datos_modulo', {})
+            codigo_modulo = self._obtener_codigo_modulo(data.get('id_modulo'))
+            
+            if codigo_modulo == 'SEG':  # Seguridad
+                seguridad = IntranetGscRegistrosSeguridad({
+                    'id_registro': id_registro,
+                    'fecha_hora_incidente': datos_modulo.get('fecha_hora_incidente'),
+                    'id_fuente_seguridad': datos_modulo.get('id_fuente_seguridad'),
+                    'tipo_amenaza': datos_modulo.get('tipo_amenaza'),
+                    'id_impacto': datos_modulo.get('id_impacto'),
+                    'responsable_tic': datos_modulo.get('responsable_tic'),
+                    'acciones_tomadas': datos_modulo.get('acciones_tomadas')
+                })
+                self.db.add(seguridad)
+                
+            elif codigo_modulo == 'DISP':  # Disponibilidad
+                disponibilidad = IntranetGscRegistrosDisponibilidad({
+                    'id_registro': id_registro,
+                    'servicio_afectado': datos_modulo.get('servicio_afectado'),
+                    'tipo_evento': datos_modulo.get('tipo_evento'),
+                    'tiempo_indisponible_min': datos_modulo.get('tiempo_indisponible_min', 0),
+                    'sla_afectado': datos_modulo.get('sla_afectado', False),
+                    'acciones': datos_modulo.get('acciones'),
+                    'causa_raiz': datos_modulo.get('causa_raiz')
+                })
+                self.db.add(disponibilidad)
+                
+            elif codigo_modulo == 'MNT':  # Mantenimiento
+                mantenimiento = IntranetGscRegistrosMantenimiento({
+                    'id_registro': id_registro,
+                    'area': datos_modulo.get('area'),
+                    'tipo_mantenimiento': datos_modulo.get('tipo_mantenimiento'),
+                    'fecha_inicio': datos_modulo.get('fecha_inicio'),
+                    'fecha_fin': datos_modulo.get('fecha_fin'),
+                    'requiere_parada': datos_modulo.get('requiere_parada', False),
+                    'id_riesgo': datos_modulo.get('id_riesgo'),
+                    'sistemas_componentes': datos_modulo.get('sistemas_componentes'),
+                    'responsable_ejecucion': datos_modulo.get('responsable_ejecucion')
+                })
+                self.db.add(mantenimiento)
+                
+            elif codigo_modulo == 'DR':  # Disaster Recovery
+                dr = IntranetGscRegistrosDisasterRecovery({
+                    'id_registro': id_registro,
+                    'escenario': datos_modulo.get('escenario'),
+                    'fecha_inicio': datos_modulo.get('fecha_inicio'),
+                    'fecha_fin': datos_modulo.get('fecha_fin'),
+                    'objetivo': datos_modulo.get('objetivo'),
+                    'resultado': datos_modulo.get('resultado'),
+                    'hallazgos': datos_modulo.get('hallazgos'),
+                    'lecciones_aprendidas': datos_modulo.get('lecciones_aprendidas'),
+                    'rto_objetivo': datos_modulo.get('rto_objetivo'),
+                    'rto_real': datos_modulo.get('rto_real'),
+                    'rpo_objetivo': datos_modulo.get('rpo_objetivo'),
+                    'rpo_real': datos_modulo.get('rpo_real')
+                })
+                self.db.add(dr)
+            
+            # PASO 5: Commit de toda la transacción
+            self.db.commit()
+            
+            return {
+                'success': True,
+                'id_registro': id_registro,
+                'message': 'Registro GSC creado exitosamente'
+            }
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando registro GSC completo: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'success': False,
+                'id_registro': None,
+                'message': f'Error creando registro: {str(e)}'
+            }
+
+    def _obtener_codigo_modulo(self, id_modulo: int):
+        """
+        Método auxiliar para obtener el código del módulo por su ID
+        """
+        try:
+            modulo = self.db.query(IntranetGscModulos).filter(
+                IntranetGscModulos.id == id_modulo
+            ).first()
+            
+            return modulo.codigo if modulo else None
+            
+        except Exception as e:
+            print(f"Error obteniendo código de módulo: {e}")
+            return None
+
+    def obtener_registro_gsc_completo(self, id_registro: int):
+        """
+        Obtiene un registro GSC completo con todas sus relaciones
+        """
+        try:
+            # Obtener registro principal
+            registro = self.db.query(IntranetGscRegistros).filter(
+                IntranetGscRegistros.id == id_registro,
+                IntranetGscRegistros.activo == True
+            ).first()
+            
+            if not registro:
+                return None
+            
+            resultado = registro.to_dict()
+            
+            # Obtener sistemas afectados con JOIN
+            sistemas = self.db.query(
+                IntranetGscSistemasAfectados
+            ).join(
+                IntranetGscRegistrosSistemas,
+                IntranetGscRegistrosSistemas.id_sistema == IntranetGscSistemasAfectados.id
+            ).filter(
+                IntranetGscRegistrosSistemas.id_registro == id_registro
+            ).all()
+            
+            resultado['sistemas_afectados'] = [{'id': s.id, 'nombre': s.nombre} for s in sistemas]
+            
+            # Obtener evidencias
+            evidencias = self.db.query(IntranetGscEvidencias).filter(
+                IntranetGscEvidencias.id_registro == id_registro,
+                IntranetGscEvidencias.activo == True
+            ).all()
+            
+            evidencias_list = []
+            for evidencia in evidencias:
+                ev_dict = evidencia.to_dict()
+                
+                # Obtener datos específicos según el tipo
+                tipo = evidencia.id_tipo_evidencia
+                
+                if tipo == 1:  # Ticket
+                    ticket = self.db.query(IntranetGscEvidenciasTicket).filter(
+                        IntranetGscEvidenciasTicket.id_evidencia == evidencia.id
+                    ).first()
+                    if ticket:
+                        ev_dict['datos_especificos'] = ticket.to_dict()
+                        
+                elif tipo == 2:  # Correo
+                    correo = self.db.query(IntranetGscEvidenciasCorreo).filter(
+                        IntranetGscEvidenciasCorreo.id_evidencia == evidencia.id
+                    ).first()
+                    if correo:
+                        ev_dict['datos_especificos'] = correo.to_dict()
+                        
+                elif tipo == 3:  # Alerta
+                    alerta = self.db.query(IntranetGscEvidenciasAlerta).filter(
+                        IntranetGscEvidenciasAlerta.id_evidencia == evidencia.id
+                    ).first()
+                    if alerta:
+                        ev_dict['datos_especificos'] = alerta.to_dict()
+                        
+                elif tipo == 4:  # Captura
+                    captura = self.db.query(IntranetGscEvidenciasCaptura).filter(
+                        IntranetGscEvidenciasCaptura.id_evidencia == evidencia.id
+                    ).first()
+                    if captura:
+                        captura_dict = captura.to_dict()
+                        # En lugar de enviar base64, enviar URL para obtener la imagen
+                        captura_dict['imagen_url'] = f"/gestion-continuidad/obtener_imagen_evidencia/{captura.nombre_archivo}"
+                        captura_dict['archivo_base64'] = None  # No enviar base64
+                        ev_dict['datos_especificos'] = captura_dict
+                        
+                elif tipo == 5:  # Otro
+                    otro = self.db.query(IntranetGscEvidenciasOtro).filter(
+                        IntranetGscEvidenciasOtro.id_evidencia == evidencia.id
+                    ).first()
+                    if otro:
+                        ev_dict['datos_especificos'] = otro.to_dict()
+                
+                evidencias_list.append(ev_dict)
+            
+            resultado['evidencias'] = evidencias_list
+            
+            # Obtener datos específicos del módulo
+            codigo_modulo = self._obtener_codigo_modulo(registro.id_modulo)
+            
+            if codigo_modulo == 'SEG':
+                seguridad = self.db.query(IntranetGscRegistrosSeguridad).filter(
+                    IntranetGscRegistrosSeguridad.id_registro == id_registro
+                ).first()
+                if seguridad:
+                    resultado['datos_modulo'] = seguridad.to_dict()
+                    
+            elif codigo_modulo == 'DISP':
+                disponibilidad = self.db.query(IntranetGscRegistrosDisponibilidad).filter(
+                    IntranetGscRegistrosDisponibilidad.id_registro == id_registro
+                ).first()
+                if disponibilidad:
+                    resultado['datos_modulo'] = disponibilidad.to_dict()
+                    
+            elif codigo_modulo == 'MNT':
+                mantenimiento = self.db.query(IntranetGscRegistrosMantenimiento).filter(
+                    IntranetGscRegistrosMantenimiento.id_registro == id_registro
+                ).first()
+                if mantenimiento:
+                    resultado['datos_modulo'] = mantenimiento.to_dict()
+                    
+            elif codigo_modulo == 'DR':
+                dr = self.db.query(IntranetGscRegistrosDisasterRecovery).filter(
+                    IntranetGscRegistrosDisasterRecovery.id_registro == id_registro
+                ).first()
+                if dr:
+                    resultado['datos_modulo'] = dr.to_dict()
+            
+            return resultado
+            
+        except Exception as e:
+            print(f"Error obteniendo registro GSC completo: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def listar_registros_gsc(self, filtros: dict = None):
+        """
+        Lista registros GSC con filtros opcionales
+        
+        Parámetros:
+            filtros: {
+                'id_modulo': int,
+                'id_estado': int,
+                'q': str (búsqueda),
+                'fecha_desde': datetime,
+                'fecha_hasta': datetime,
+                'limite': int,
+                'offset': int
+            }
+        
+        Retorna:
+            {
+                'registros': [...],
+                'total': int,
+                'pagina': int,
+                'total_paginas': int
+            }
+        """
+        try:
+            query = self.db.query(IntranetGscRegistros).filter(
+                IntranetGscRegistros.activo == True
+            )
+            
+            if filtros:
+                if filtros.get('id_modulo'):
+                    query = query.filter(IntranetGscRegistros.id_modulo == filtros['id_modulo'])
+                
+                if filtros.get('id_estado'):
+                    query = query.filter(IntranetGscRegistros.id_estado == filtros['id_estado'])
+                
+                if filtros.get('fecha_desde'):
+                    query = query.filter(IntranetGscRegistros.fecha_creacion >= filtros['fecha_desde'])
+                
+                if filtros.get('fecha_hasta'):
+                    query = query.filter(IntranetGscRegistros.fecha_creacion <= filtros['fecha_hasta'])
+                
+                # Búsqueda por texto en resumen y descripción
+                if filtros.get('q'):
+                    busqueda = f"%{filtros['q']}%"
+                    query = query.filter(
+                        or_(
+                            IntranetGscRegistros.resumen.like(busqueda),
+                            IntranetGscRegistros.descripcion.like(busqueda)
+                        )
+                    )
+            
+            # Contar total antes de paginar
+            total = query.count()
+            
+            # Ordenar por id descendente
+            query = query.order_by(IntranetGscRegistros.id.desc())
+            
+            # Paginación
+            limite = filtros.get('limite', 10) if filtros else 10
+            offset = filtros.get('offset', 0) if filtros else 0
+            
+            query = query.limit(limite).offset(offset)
+            
+            registros = query.all()
+            
+            # Enriquecer cada registro con información adicional
+            resultado = []
+            for registro in registros:
+                reg_dict = registro.to_dict()
+                
+                # Contar evidencias activas
+                cantidad_evidencias = self.db.query(IntranetGscEvidencias).filter(
+                    IntranetGscEvidencias.id_registro == registro.id,
+                    IntranetGscEvidencias.activo == True
+                ).count()
+                
+                reg_dict['tiene_evidencias'] = cantidad_evidencias > 0
+                reg_dict['cantidad_evidencias'] = cantidad_evidencias
+                
+                # Contar sistemas afectados
+                cantidad_sistemas = self.db.query(IntranetGscRegistrosSistemas).filter(
+                    IntranetGscRegistrosSistemas.id_registro == registro.id
+                ).count()
+                
+                reg_dict['cantidad_sistemas_afectados'] = cantidad_sistemas
+                
+                resultado.append(reg_dict)
+            
+            # Calcular metadatos de paginación
+            pagina_actual = (offset // limite) + 1 if limite > 0 else 1
+            total_paginas = (total + limite - 1) // limite if limite > 0 else 1
+            
+            return {
+                'registros': resultado,
+                'total': total,
+                'pagina': pagina_actual,
+                'total_paginas': total_paginas,
+                'por_pagina': limite
+            }
+            
+        except Exception as e:
+            print(f"Error listando registros GSC: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'registros': [],
+                'total': 0,
+                'pagina': 1,
+                'total_paginas': 1,
+                'por_pagina': 10
+            }
+
+    def obtener_contadores_gsc(self, filtros: dict):
+        """
+        Obtiene contadores de registros por estado
+        Si se especifica id_modulo, filtra por ese módulo
+        Si no, retorna totales globales de todos los módulos
+        Usado para KPIs en el dashboard
+        """
+        try:
+            id_modulo = filtros.get('id_modulo') if filtros else None
+
+            # Obtener IDs de estados
+            estados = self.db.query(IntranetGscEstados).all()
+            estado_map = {e.nombre: e.id for e in estados}
+
+            # Query base para contar
+            query_base = self.db.query(func.count(IntranetGscRegistros.id))
+            
+            # Si hay filtro de módulo, aplicarlo
+            if id_modulo:
+                # Total de registros del módulo
+                total = query_base.filter(
+                    IntranetGscRegistros.id_modulo == id_modulo
+                ).scalar() or 0
+
+                # Contar por cada estado
+                abiertos = query_base.filter(
+                    IntranetGscRegistros.id_modulo == id_modulo,
+                    IntranetGscRegistros.id_estado == estado_map.get('Abierto')
+                ).scalar() or 0
+
+                en_analisis = query_base.filter(
+                    IntranetGscRegistros.id_modulo == id_modulo,
+                    IntranetGscRegistros.id_estado == estado_map.get('En análisis')
+                ).scalar() or 0
+
+                mitigados = query_base.filter(
+                    IntranetGscRegistros.id_modulo == id_modulo,
+                    IntranetGscRegistros.id_estado == estado_map.get('Mitigado')
+                ).scalar() or 0
+
+                cerrados = query_base.filter(
+                    IntranetGscRegistros.id_modulo == id_modulo,
+                    IntranetGscRegistros.id_estado == estado_map.get('Cerrado')
+                ).scalar() or 0
+            else:
+                # Totales globales de todos los módulos
+                total = query_base.scalar() or 0
+
+                abiertos = query_base.filter(
+                    IntranetGscRegistros.id_estado == estado_map.get('Abierto')
+                ).scalar() or 0
+
+                en_analisis = query_base.filter(
+                    IntranetGscRegistros.id_estado == estado_map.get('En análisis')
+                ).scalar() or 0
+
+                mitigados = query_base.filter(
+                    IntranetGscRegistros.id_estado == estado_map.get('Mitigado')
+                ).scalar() or 0
+
+                cerrados = query_base.filter(
+                    IntranetGscRegistros.id_estado == estado_map.get('Cerrado')
+                ).scalar() or 0
+
+            return {
+                'total': total,
+                'abiertos': abiertos,
+                'en_analisis': en_analisis,
+                'mitigados': mitigados,
+                'cerrados': cerrados
+            }
+
+        except Exception as e:
+            print(f"Error obteniendo contadores GSC: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'total': 0,
+                'abiertos': 0,
+                'en_analisis': 0,
+                'mitigados': 0,
+                'cerrados': 0
+            }
+
+    def actualizar_registro_gsc_completo(self, id_registro: int, data: dict):
+        """
+        Actualiza un registro GSC completo
+        """
+        try:
+            # Obtener registro existente
+            registro = self.db.query(IntranetGscRegistros).filter(
+                IntranetGscRegistros.id == id_registro,
+                IntranetGscRegistros.activo == True
+            ).first()
+            
+            if not registro:
+                return {'success': False, 'message': 'Registro no encontrado'}
+            
+            # Actualizar campos del registro principal
+            if 'resumen' in data:
+                registro.resumen = data['resumen']
+            if 'descripcion' in data:
+                registro.descripcion = data['descripcion']
+            if 'id_estado' in data:
+                registro.id_estado = data['id_estado']
+                # Actualizar fecha según nuevo estado
+                estado_id = data['id_estado']
+                fecha_actual = datetime.now()
+                if estado_id == 1:
+                    registro.fecha_abierto = fecha_actual
+                elif estado_id == 2:
+                    registro.fecha_en_analisis = fecha_actual
+                elif estado_id == 3:
+                    registro.fecha_mitigado = fecha_actual
+                elif estado_id == 4:
+                    registro.fecha_cerrado = fecha_actual
+            if 'notificar_gerencia' in data:
+                registro.notificar_gerencia = data['notificar_gerencia']
+            
+            registro.fecha_actualizacion = datetime.now()
+            registro.usuario_actualizacion = data.get('usuario_actualizacion')
+            
+            # Actualizar sistemas afectados si se proporcionan
+            if 'sistemas_afectados' in data:
+                # Eliminar relaciones actuales
+                self.db.query(IntranetGscRegistrosSistemas).filter(
+                    IntranetGscRegistrosSistemas.id_registro == id_registro
+                ).delete()
+                
+                # Crear nuevas relaciones
+                for id_sistema in data['sistemas_afectados']:
+                    sistema_rel = IntranetGscRegistrosSistemas({
+                        'id_registro': id_registro,
+                        'id_sistema': id_sistema
+                    })
+                    self.db.add(sistema_rel)
+            
+            # Actualizar evidencias si se proporcionan
+            if 'evidencias' in data:
+                # Desactivar todas las evidencias actuales (soft delete)
+                evidencias_actuales = self.db.query(IntranetGscEvidencias).filter(
+                    IntranetGscEvidencias.id_registro == id_registro,
+                    IntranetGscEvidencias.activo == True
+                ).all()
+                
+                for ev in evidencias_actuales:
+                    ev.activo = False
+                
+                # Crear las nuevas evidencias
+                evidencias = data.get('evidencias', [])
+                for evidencia_data in evidencias:
+                    
+                    # Crear evidencia base
+                    evidencia = IntranetGscEvidencias({
+                        'id_registro': id_registro,
+                        'id_tipo_evidencia': evidencia_data.get('id_tipo_evidencia'),
+                        'observacion': evidencia_data.get('observacion'),
+                        'fecha_evidencia': evidencia_data.get('fecha_evidencia')
+                    })
+                    self.db.add(evidencia)
+                    self.db.flush()
+                    
+                    id_evidencia = evidencia.id
+                    tipo_evidencia = evidencia_data.get('id_tipo_evidencia')
+                    datos_especificos = evidencia_data.get('datos_especificos', {})
+                    
+                    # Crear datos específicos según el tipo de evidencia
+                    if tipo_evidencia == 1:  # Ticket
+                        ticket = IntranetGscEvidenciasTicket({
+                            'id_evidencia': id_evidencia,
+                            'numero_ticket': datos_especificos.get('numero_ticket'),
+                            'plataforma': datos_especificos.get('plataforma'),
+                            'url_ticket': datos_especificos.get('url_ticket')
+                        })
+                        self.db.add(ticket)
+                        
+                    elif tipo_evidencia == 2:  # Correo
+                        correo = IntranetGscEvidenciasCorreo({
+                            'id_evidencia': id_evidencia,
+                            'asunto': datos_especificos.get('asunto'),
+                            'remitente': datos_especificos.get('remitente'),
+                            'destinatarios': datos_especificos.get('destinatarios'),
+                            'fecha_envio': datos_especificos.get('fecha_envio')
+                        })
+                        self.db.add(correo)
+                        
+                    elif tipo_evidencia == 3:  # Alerta
+                        alerta = IntranetGscEvidenciasAlerta({
+                            'id_evidencia': id_evidencia,
+                            'id_origen_plataforma': datos_especificos.get('id_origen_plataforma'),
+                            'nombre_alerta': datos_especificos.get('nombre_alerta'),
+                            'severidad': datos_especificos.get('severidad'),
+                            'fecha_alerta': datos_especificos.get('fecha_alerta'),
+                            'codigo_alerta': datos_especificos.get('codigo_alerta')
+                        })
+                        self.db.add(alerta)
+                        
+                    elif tipo_evidencia == 4:  # Captura
+                        # Guardar archivo físico solo si es base64 nuevo
+                        file_handler = FileHandler()
+                        base64_data = datos_especificos.get('archivo_base64')
+                        nombre_original = datos_especificos.get('nombre_archivo', 'captura.png')
+                        
+                        if base64_data:
+                            # Detectar si es una URL (imagen existente) o base64 nuevo
+                            if base64_data.startswith('http://') or base64_data.startswith('https://') or base64_data.startswith('/gestion-continuidad/'):
+                                # Es una URL, extraer el nombre del archivo de la URL
+                                # Formato: .../obtener_imagen_evidencia/captura_20260204_103045_123456.png
+                                nombre_archivo = base64_data.split('/')[-1]
+                                ruta_relativa = f'/gestion-continuidad/obtener_imagen_evidencia/{nombre_archivo}'
+                                
+                                # Obtener info del archivo existente
+                                ruta_completa = file_handler.obtener_ruta_completa(nombre_archivo)
+                                if ruta_completa.exists():
+                                    tamano_bytes = ruta_completa.stat().st_size
+                                else:
+                                    tamano_bytes = 0
+                                
+                                captura = IntranetGscEvidenciasCaptura({
+                                    'id_evidencia': id_evidencia,
+                                    'nombre_archivo': nombre_archivo,
+                                    'ruta_archivo': ruta_relativa,
+                                    'archivo_base64': None,
+                                    'tipo_mime': 'image/png',
+                                    'tamano_bytes': tamano_bytes
+                                })
+                            else:
+                                # Es base64 nuevo, guardarlo
+                                archivo_info = file_handler.guardar_imagen_base64(base64_data, nombre_original)
+                                captura = IntranetGscEvidenciasCaptura({
+                                    'id_evidencia': id_evidencia,
+                                    'nombre_archivo': archivo_info['nombre_archivo'],
+                                    'ruta_archivo': archivo_info['ruta_relativa'],
+                                    'archivo_base64': None,  # No guardar base64 en BD
+                                    'tipo_mime': archivo_info['tipo_mime'],
+                                    'tamano_bytes': archivo_info['tamano_bytes']
+                                })
+                            
+                            self.db.add(captura)
+                        
+                    elif tipo_evidencia == 5:  # Otro
+                        otro = IntranetGscEvidenciasOtro({
+                            'id_evidencia': id_evidencia,
+                            'descripcion_tipo': datos_especificos.get('descripcion_tipo'),
+                            'detalles': datos_especificos.get('detalles'),
+                            'referencia': datos_especificos.get('referencia')
+                        })
+                        self.db.add(otro)
+            
+            # Actualizar datos del módulo si se proporcionan
+            if 'datos_modulo' in data:
+                codigo_modulo = self._obtener_codigo_modulo(registro.id_modulo)
+                datos_modulo = data['datos_modulo']
+                
+                if codigo_modulo == 'SEG':
+                    seguridad = self.db.query(IntranetGscRegistrosSeguridad).filter(
+                        IntranetGscRegistrosSeguridad.id_registro == id_registro
+                    ).first()
+                    if seguridad:
+                        for key, value in datos_modulo.items():
+                            setattr(seguridad, key, value)
+                            
+                elif codigo_modulo == 'DISP':
+                    disponibilidad = self.db.query(IntranetGscRegistrosDisponibilidad).filter(
+                        IntranetGscRegistrosDisponibilidad.id_registro == id_registro
+                    ).first()
+                    if disponibilidad:
+                        for key, value in datos_modulo.items():
+                            setattr(disponibilidad, key, value)
+                            
+                elif codigo_modulo == 'MNT':
+                    mantenimiento = self.db.query(IntranetGscRegistrosMantenimiento).filter(
+                        IntranetGscRegistrosMantenimiento.id_registro == id_registro
+                    ).first()
+                    if mantenimiento:
+                        for key, value in datos_modulo.items():
+                            setattr(mantenimiento, key, value)
+                            
+                elif codigo_modulo == 'DR':
+                    dr = self.db.query(IntranetGscRegistrosDisasterRecovery).filter(
+                        IntranetGscRegistrosDisasterRecovery.id_registro == id_registro
+                    ).first()
+                    if dr:
+                        for key, value in datos_modulo.items():
+                            setattr(dr, key, value)
+            
+            self.db.commit()
+            
+            return {
+                'success': True,
+                'message': 'Registro actualizado exitosamente'
+            }
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error actualizando registro GSC: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'success': False,
+                'message': f'Error actualizando registro: {str(e)}'
+            }
+
+    def eliminar_registro_gsc(self, id_registro: int):
+        """
+        Elimina (desactiva) un registro GSC
+        """
+        try:
+            registro = self.db.query(IntranetGscRegistros).filter(
+                IntranetGscRegistros.id == id_registro
+            ).first()
+            
+            if not registro:
+                return {'success': False, 'message': 'Registro no encontrado'}
+            
+            registro.activo = False
+            registro.fecha_actualizacion = datetime.now()
+            
+            self.db.commit()
+            
+            return {
+                'success': True,
+                'message': 'Registro eliminado exitosamente'
+            }
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error eliminando registro GSC: {e}")
+            return {
+                'success': False,
+                'message': f'Error eliminando registro: {str(e)}'
+            }
