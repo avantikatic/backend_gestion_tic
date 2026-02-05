@@ -4293,27 +4293,28 @@ class Querys:
                     overflow: hidden;
                 }}
                 .header {{ 
-                    background: linear-gradient(135deg, {color_principal} 0%, {color_borde} 100%);
+                    background: linear-gradient(135deg, {color_principal} 0%, #ffffff 100%);
                     color: white; 
-                    padding: 30px 20px; 
-                    text-align: center;
+                    padding: 20px 20px; 
+                    text-align: left;
                 }}
                 .header img {{
-                    max-width: 180px;
+                    max-width: 150px;
                     background-color: white;
-                    padding: 10px;
+                    padding: 8px;
                     border-radius: 8px;
-                    margin-bottom: 15px;
+                    margin-bottom: 10px;
                 }}
                 .header h1 {{
-                    margin: 10px 0;
-                    font-size: 28px;
+                    margin: 8px 0;
+                    font-size: 22px;
                     font-weight: 600;
+                    color: white;
                 }}
                 .header p {{
                     margin: 5px 0 0 0;
-                    font-size: 16px;
-                    opacity: 0.95;
+                    font-size: 15px;
+                    color: white;
                 }}
                 .content {{ 
                     background-color: #ffffff; 
@@ -4350,8 +4351,7 @@ class Querys:
         <body>
             <div class="container">
                 <div class="header">
-                    <img src="cid:company_logo" alt="Avantika">
-                    <h1>🔔 Notificación de Gestión de Continuidad</h1>
+                    <h1>Notificación de Gestión de Continuidad</h1>
                     <p>Módulo: <strong>{modulo_nombre}</strong></p>
                 </div>
                 
@@ -4378,7 +4378,7 @@ class Querys:
                 
                 <div class="footer">
                     <p>⚠️ Este mensaje fue generado automáticamente. Por favor, no responda a este correo.</p>
-                    <p><strong>AVANTIKA</strong> | Gestión TIC | Departamento de Tecnología</p>
+                    <p><strong>AVANTIKA</strong> | Gestión TIC | Macroproceso de Tecnología de la Información y Comunicaciones.</p>
                 </div>
             </div>
         </body>
@@ -4483,7 +4483,7 @@ class Querys:
             tools = Tools()
             subject = f"Notificación GSC - {codigo_modulo} - Registro #{id_registro}"
             to_email = "sistemas@avantika.com.co"
-            cc_emails = []  # Sin copia
+            cc_emails = ["auxiliartic@avantika.com.co"]  # Sin copia
             mail_sender = "tic@avantika.com.co"
             
             # Ruta del logo - Usar logo.png en la raíz del proyecto
