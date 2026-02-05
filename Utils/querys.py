@@ -4482,8 +4482,8 @@ class Querys:
             # Enviar correo
             tools = Tools()
             subject = f"Notificación GSC - {codigo_modulo} - Registro #{id_registro}"
-            to_email = "sistemas@avantika.com.co"
-            cc_emails = ["auxiliartic@avantika.com.co"]  # Sin copia
+            to_email = "gerencia@avantika.com.co"
+            cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co", "sistemas@avantika.com.co"]
             mail_sender = "tic@avantika.com.co"
             
             # Ruta del logo - Usar logo.png en la raíz del proyecto
