@@ -14,6 +14,7 @@ class IntranetGscRegistrosMantenimiento(BASE):
     id_registro = Column(Integer, ForeignKey('intranet_gsc_registros.id', ondelete='CASCADE'), nullable=False, unique=True)
     area = Column(String(200))
     tipo_mantenimiento = Column(String(200))
+    descripcion = Column(Text)
     fecha_inicio = Column(DateTime, nullable=False)
     fecha_fin = Column(DateTime, nullable=False)
     requiere_parada = Column(Boolean, default=False, nullable=False)
@@ -27,6 +28,7 @@ class IntranetGscRegistrosMantenimiento(BASE):
         self.id_registro = data.get('id_registro')
         self.area = data.get('area')
         self.tipo_mantenimiento = data.get('tipo_mantenimiento')
+        self.descripcion = data.get('descripcion')
         self.fecha_inicio = data.get('fecha_inicio')
         self.fecha_fin = data.get('fecha_fin')
         self.requiere_parada = data.get('requiere_parada', False)
@@ -40,6 +42,7 @@ class IntranetGscRegistrosMantenimiento(BASE):
             'id': self.id,
             'id_registro': self.id_registro,
             'area': self.area,
+            'descripcion': self.descripcion,
             'tipo_mantenimiento': self.tipo_mantenimiento,
             'fecha_inicio': self.fecha_inicio.isoformat() if self.fecha_inicio else None,
             'fecha_fin': self.fecha_fin.isoformat() if self.fecha_fin else None,

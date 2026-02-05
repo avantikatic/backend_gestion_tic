@@ -3246,6 +3246,15 @@ class Querys:
             dict: {'success': bool, 'id_registro': int, 'message': str}
         """
         try:
+            # Convertir array de correos CC a JSON string si es necesario
+            correos_cc_json = None
+            if data.get('correos_cc'):
+                import json
+                if isinstance(data['correos_cc'], list):
+                    correos_cc_json = json.dumps(data['correos_cc'])
+                else:
+                    correos_cc_json = data['correos_cc']  # Ya es string
+            
             # PASO 1: Crear registro principal
             registro_data = {
                 'id_modulo': data.get('id_modulo'),
@@ -3253,6 +3262,8 @@ class Querys:
                 'descripcion': data.get('descripcion'),
                 'id_estado': data.get('id_estado'),
                 'notificar_gerencia': data.get('notificar_gerencia', False),
+                'enviar_contactos_empresa': data.get('enviar_contactos_empresa', False),
+                'correos_cc': correos_cc_json,  # JSON string con array de correos
                 'usuario_creacion': data.get('usuario_creacion')
             }
             
@@ -3394,6 +3405,7 @@ class Querys:
                     'id_registro': id_registro,
                     'area': datos_modulo.get('area'),
                     'tipo_mantenimiento': datos_modulo.get('tipo_mantenimiento'),
+                    'descripcion': datos_modulo.get('descripcion'),
                     'fecha_inicio': datos_modulo.get('fecha_inicio'),
                     'fecha_fin': datos_modulo.get('fecha_fin'),
                     'requiere_parada': datos_modulo.get('requiere_parada', False),
@@ -3573,6 +3585,16 @@ class Querys:
                 ).first()
                 if dr:
                     resultado['datos_modulo'] = dr.to_dict()
+            
+            # Parsear correos_cc de JSON a array
+            if resultado.get('correos_cc'):
+                try:
+                    import json
+                    resultado['correos_cc'] = json.loads(resultado['correos_cc'])
+                except:
+                    resultado['correos_cc'] = []
+            else:
+                resultado['correos_cc'] = []
             
             return resultado
             
@@ -3812,6 +3834,15 @@ class Querys:
                     registro.fecha_cerrado = fecha_actual
             if 'notificar_gerencia' in data:
                 registro.notificar_gerencia = data['notificar_gerencia']
+            if 'enviar_contactos_empresa' in data:
+                registro.enviar_contactos_empresa = data['enviar_contactos_empresa']
+            if 'correos_cc' in data:
+                # Convertir array a JSON string si es necesario
+                import json
+                if isinstance(data['correos_cc'], list):
+                    registro.correos_cc = json.dumps(data['correos_cc'])
+                else:
+                    registro.correos_cc = data['correos_cc']  # Ya es string
             
             registro.fecha_actualizacion = datetime.now()
             registro.usuario_actualizacion = data.get('usuario_actualizacion')
@@ -4202,22 +4233,26 @@ class Querys:
                         <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('tipo_mantenimiento', '')}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Fecha Inicio:</td>
-                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{fecha_inicio}</td>
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold; vertical-align: top;">Descripción:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{modulo_data.get('descripcion', '')}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Fecha Fin:</td>
-                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{fecha_fin}</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Fecha Inicio:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">{fecha_inicio}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Requiere Parada:</td>
-                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Fecha Fin:</td>
+                        <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">{fecha_fin}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Interrupción del Servicio:</td>
+                        <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">
                             <span style="background-color: {'#ff7675' if modulo_data.get('requiere_parada') else '#55efc4'}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold;">{'Sí' if modulo_data.get('requiere_parada') else 'No'}</span>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding: 12px; background-color: #f8f9fa; font-weight: bold;">Riesgo:</td>
-                        <td style="padding: 12px; background-color: #f8f9fa;">
+                        <td style="padding: 12px; background-color: #ffffff; font-weight: bold;">Riesgo:</td>
+                        <td style="padding: 12px; background-color: #ffffff;">
                             <span style="background-color: #ffeaa7; padding: 4px 12px; border-radius: 12px; font-weight: bold;">{riesgo_nombre}</span>
                         </td>
                     </tr>
@@ -4455,6 +4490,7 @@ class Querys:
                     modulo_data = {
                         'area': datos.area,
                         'tipo_mantenimiento': datos.tipo_mantenimiento,
+                        'descripcion': datos.descripcion,
                         'fecha_inicio': datos.fecha_inicio,
                         'fecha_fin': datos.fecha_fin,
                         'requiere_parada': datos.requiere_parada,
@@ -4484,6 +4520,17 @@ class Querys:
             subject = f"Notificación GSC - {codigo_modulo} - Registro #{id_registro}"
             to_email = "gerencia@avantika.com.co"
             cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co", "sistemas@avantika.com.co"]
+            
+            # Agregar correos CC adicionales si está activado
+            if registro.enviar_contactos_empresa and registro.correos_cc:
+                try:
+                    import json
+                    correos_adicionales = json.loads(registro.correos_cc)
+                    if isinstance(correos_adicionales, list):
+                        cc_emails.extend(correos_adicionales)
+                except Exception as e:
+                    print(f"Error parseando correos CC: {e}")
+            
             mail_sender = "tic@avantika.com.co"
             
             # Ruta del logo - Usar logo.png en la raíz del proyecto

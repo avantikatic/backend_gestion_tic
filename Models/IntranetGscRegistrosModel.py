@@ -25,6 +25,8 @@ class IntranetGscRegistros(BASE):
     
     # Opciones
     notificar_gerencia = Column(Boolean, default=False, nullable=False)
+    enviar_contactos_empresa = Column(Boolean, default=False, nullable=False)
+    correos_cc = Column(Text)  # Almacena JSON array de correos
     
     # Auditoría
     fecha_creacion = Column(DateTime, default=datetime.now, nullable=False)
@@ -45,6 +47,8 @@ class IntranetGscRegistros(BASE):
         self.fecha_mitigado = data.get('fecha_mitigado')
         self.fecha_cerrado = data.get('fecha_cerrado')
         self.notificar_gerencia = data.get('notificar_gerencia', False)
+        self.enviar_contactos_empresa = data.get('enviar_contactos_empresa', False)
+        self.correos_cc = data.get('correos_cc')
         self.usuario_creacion = data.get('usuario_creacion')
         self.usuario_actualizacion = data.get('usuario_actualizacion')
         self.activo = data.get('activo', True)
@@ -62,6 +66,8 @@ class IntranetGscRegistros(BASE):
             'fecha_mitigado': self.fecha_mitigado.isoformat() if self.fecha_mitigado else None,
             'fecha_cerrado': self.fecha_cerrado.isoformat() if self.fecha_cerrado else None,
             'notificar_gerencia': self.notificar_gerencia,
+            'enviar_contactos_empresa': self.enviar_contactos_empresa,
+            'correos_cc': self.correos_cc,
             'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
             'fecha_actualizacion': self.fecha_actualizacion.isoformat() if self.fecha_actualizacion else None,
             'usuario_creacion': self.usuario_creacion,
