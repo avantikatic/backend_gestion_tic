@@ -6,6 +6,7 @@ import json
 import traceback
 import os
 from pathlib import Path
+import pytz
 from Models.IntranetGraphTokenModel import IntranetGraphTokenModel as TokenModel
 from Models.IntranetCorreosMicrosoftModel import IntranetCorreosMicrosoftModel as CorreosMicrosoftModel
 from Models.IntranetSyncLogModel import IntranetSyncLogModel as SyncLogModel
@@ -59,6 +60,50 @@ class Querys:
         self.db = db
         self.tools = Tools()
         self.query_params = dict()
+        self.colombia_tz = pytz.timezone('America/Bogota')
+    
+    def _get_fecha_colombia(self):
+        """
+        Obtiene la fecha y hora actual en zona horaria de Colombia.
+        Retorna datetime naive (sin timezone info) para compatibilidad con BD.
+        """
+        return datetime.now(self.colombia_tz).replace(tzinfo=None)
+    
+    def _convertir_fecha_a_colombia(self, fecha_str):
+        """
+        Convierte una fecha string del frontend a zona horaria de Colombia.
+        Si la fecha viene en UTC o sin timezone, la ajusta a Colombia.
+        Si ya es datetime, lo convierte a Colombia.
+        
+        Args:
+            fecha_str: String de fecha en formato ISO o datetime object
+        
+        Returns:
+            datetime naive en zona horaria Colombia o None si es inválido
+        """
+        if not fecha_str:
+            return None
+        
+        try:
+            # Si ya es un datetime object
+            if isinstance(fecha_str, datetime):
+                fecha = fecha_str
+            else:
+                # Parsear string ISO (puede tener 'Z' o offset)
+                fecha_str = str(fecha_str).replace('Z', '+00:00')
+                fecha = datetime.fromisoformat(fecha_str)
+            
+            # Si tiene timezone info, convertir a Colombia
+            if fecha.tzinfo is not None:
+                fecha_colombia = fecha.astimezone(self.colombia_tz)
+                return fecha_colombia.replace(tzinfo=None)
+            else:
+                # Si no tiene timezone, asumir que ya es hora de Colombia
+                return fecha
+                
+        except Exception as e:
+            print(f"⚠️ Error convirtiendo fecha {fecha_str}: {e}")
+            return None
 
     # Query para obtener la información del activo por código
     def get_token(self):
@@ -3258,6 +3303,8 @@ class Querys:
                     correos_cc_json = data['correos_cc']  # Ya es string
             
             # PASO 1: Crear registro principal
+            fecha_actual = self._get_fecha_colombia()
+            
             registro_data = {
                 'id_modulo': data.get('id_modulo'),
                 'resumen': data.get('resumen'),
@@ -3266,12 +3313,13 @@ class Querys:
                 'notificar_gerencia': data.get('notificar_gerencia', False),
                 'enviar_contactos_empresa': data.get('enviar_contactos_empresa', False),
                 'correos_cc': correos_cc_json,  # JSON string con array de correos
-                'usuario_creacion': data.get('usuario_creacion')
+                'usuario_creacion': data.get('usuario_creacion'),
+                'fecha_creacion': fecha_actual,
+                'fecha_actualizacion': fecha_actual
             }
             
-            # Asignar fecha según el estado seleccionado
+            # Asignar fecha según el estado seleccionado (zona horaria Colombia)
             estado_id = data.get('id_estado')
-            fecha_actual = datetime.now()
             
             if estado_id == 1:  # Abierto
                 registro_data['fecha_abierto'] = fecha_actual
@@ -3307,7 +3355,7 @@ class Querys:
                     'id_registro': id_registro,
                     'id_tipo_evidencia': evidencia_data.get('id_tipo_evidencia'),
                     'observacion': evidencia_data.get('observacion'),
-                    'fecha_evidencia': evidencia_data.get('fecha_evidencia')
+                    'fecha_evidencia': self._convertir_fecha_a_colombia(evidencia_data.get('fecha_evidencia'))
                 })
                 self.db.add(evidencia)
                 self.db.flush()
@@ -3332,7 +3380,7 @@ class Querys:
                         'asunto': datos_especificos.get('asunto'),
                         'remitente': datos_especificos.get('remitente'),
                         'destinatarios': datos_especificos.get('destinatarios'),
-                        'fecha_envio': datos_especificos.get('fecha_envio')
+                        'fecha_envio': self._convertir_fecha_a_colombia(datos_especificos.get('fecha_envio'))
                     })
                     self.db.add(correo)
                     
@@ -3342,7 +3390,7 @@ class Querys:
                         'id_origen_plataforma': datos_especificos.get('id_origen_plataforma'),
                         'nombre_alerta': datos_especificos.get('nombre_alerta'),
                         'severidad': datos_especificos.get('severidad'),
-                        'fecha_alerta': datos_especificos.get('fecha_alerta'),
+                        'fecha_alerta': self._convertir_fecha_a_colombia(datos_especificos.get('fecha_alerta')),
                         'codigo_alerta': datos_especificos.get('codigo_alerta')
                     })
                     self.db.add(alerta)
@@ -3381,7 +3429,7 @@ class Querys:
             if codigo_modulo == 'SEG':  # Seguridad
                 seguridad = IntranetGscRegistrosSeguridad({
                     'id_registro': id_registro,
-                    'fecha_hora_incidente': datos_modulo.get('fecha_hora_incidente'),
+                    'fecha_hora_incidente': self._convertir_fecha_a_colombia(datos_modulo.get('fecha_hora_incidente')),
                     'id_fuente_seguridad': datos_modulo.get('id_fuente_seguridad'),
                     'tipo_amenaza': datos_modulo.get('tipo_amenaza'),
                     'id_impacto': datos_modulo.get('id_impacto'),
@@ -3408,8 +3456,8 @@ class Querys:
                     'area': datos_modulo.get('area'),
                     'tipo_mantenimiento': datos_modulo.get('tipo_mantenimiento'),
                     'descripcion': datos_modulo.get('descripcion'),
-                    'fecha_inicio': datos_modulo.get('fecha_inicio'),
-                    'fecha_fin': datos_modulo.get('fecha_fin'),
+                    'fecha_inicio': self._convertir_fecha_a_colombia(datos_modulo.get('fecha_inicio')),
+                    'fecha_fin': self._convertir_fecha_a_colombia(datos_modulo.get('fecha_fin')),
                     'requiere_parada': datos_modulo.get('requiere_parada', False),
                     'id_riesgo': datos_modulo.get('id_riesgo'),
                     'sistemas_componentes': datos_modulo.get('sistemas_componentes'),
@@ -3421,8 +3469,8 @@ class Querys:
                 dr = IntranetGscRegistrosDisasterRecovery({
                     'id_registro': id_registro,
                     'escenario': datos_modulo.get('escenario'),
-                    'fecha_inicio': datos_modulo.get('fecha_inicio'),
-                    'fecha_fin': datos_modulo.get('fecha_fin'),
+                    'fecha_inicio': self._convertir_fecha_a_colombia(datos_modulo.get('fecha_inicio')),
+                    'fecha_fin': self._convertir_fecha_a_colombia(datos_modulo.get('fecha_fin')),
                     'objetivo': datos_modulo.get('objetivo'),
                     'resultado': datos_modulo.get('resultado'),
                     'hallazgos': datos_modulo.get('hallazgos'),
@@ -3823,9 +3871,9 @@ class Querys:
                 registro.descripcion = data['descripcion']
             if 'id_estado' in data:
                 registro.id_estado = data['id_estado']
-                # Actualizar fecha según nuevo estado
+                # Actualizar fecha según nuevo estado (zona horaria Colombia)
                 estado_id = data['id_estado']
-                fecha_actual = datetime.now()
+                fecha_actual = self._get_fecha_colombia()
                 if estado_id == 1:
                     registro.fecha_abierto = fecha_actual
                 elif estado_id == 2:
@@ -3846,7 +3894,7 @@ class Querys:
                 else:
                     registro.correos_cc = data['correos_cc']  # Ya es string
             
-            registro.fecha_actualizacion = datetime.now()
+            registro.fecha_actualizacion = self._get_fecha_colombia()
             registro.usuario_actualizacion = data.get('usuario_actualizacion')
             
             # Actualizar sistemas afectados si se proporcionan
@@ -3884,7 +3932,7 @@ class Querys:
                         'id_registro': id_registro,
                         'id_tipo_evidencia': evidencia_data.get('id_tipo_evidencia'),
                         'observacion': evidencia_data.get('observacion'),
-                        'fecha_evidencia': evidencia_data.get('fecha_evidencia')
+                        'fecha_evidencia': self._convertir_fecha_a_colombia(evidencia_data.get('fecha_evidencia'))
                     })
                     self.db.add(evidencia)
                     self.db.flush()
@@ -3909,7 +3957,7 @@ class Querys:
                             'asunto': datos_especificos.get('asunto'),
                             'remitente': datos_especificos.get('remitente'),
                             'destinatarios': datos_especificos.get('destinatarios'),
-                            'fecha_envio': datos_especificos.get('fecha_envio')
+                            'fecha_envio': self._convertir_fecha_a_colombia(datos_especificos.get('fecha_envio'))
                         })
                         self.db.add(correo)
                         
@@ -3919,7 +3967,7 @@ class Querys:
                             'id_origen_plataforma': datos_especificos.get('id_origen_plataforma'),
                             'nombre_alerta': datos_especificos.get('nombre_alerta'),
                             'severidad': datos_especificos.get('severidad'),
-                            'fecha_alerta': datos_especificos.get('fecha_alerta'),
+                            'fecha_alerta': self._convertir_fecha_a_colombia(datos_especificos.get('fecha_alerta')),
                             'codigo_alerta': datos_especificos.get('codigo_alerta')
                         })
                         self.db.add(alerta)
@@ -3987,6 +4035,9 @@ class Querys:
                     ).first()
                     if seguridad:
                         for key, value in datos_modulo.items():
+                            # Convertir fechas a zona horaria Colombia
+                            if key == 'fecha_hora_incidente' and value:
+                                value = self._convertir_fecha_a_colombia(value)
                             setattr(seguridad, key, value)
                             
                 elif codigo_modulo == 'DISP':
@@ -4003,6 +4054,9 @@ class Querys:
                     ).first()
                     if mantenimiento:
                         for key, value in datos_modulo.items():
+                            # Convertir fechas a zona horaria Colombia
+                            if key in ['fecha_inicio', 'fecha_fin'] and value:
+                                value = self._convertir_fecha_a_colombia(value)
                             setattr(mantenimiento, key, value)
                             
                 elif codigo_modulo == 'DR':
@@ -4011,6 +4065,9 @@ class Querys:
                     ).first()
                     if dr:
                         for key, value in datos_modulo.items():
+                            # Convertir fechas a zona horaria Colombia
+                            if key in ['fecha_inicio', 'fecha_fin'] and value:
+                                value = self._convertir_fecha_a_colombia(value)
                             setattr(dr, key, value)
             
             self.db.commit()
@@ -4047,7 +4104,7 @@ class Querys:
                 return {'success': False, 'message': 'Registro no encontrado'}
             
             registro.activo = False
-            registro.fecha_actualizacion = datetime.now()
+            registro.fecha_actualizacion = self._get_fecha_colombia()
             
             self.db.commit()
             
