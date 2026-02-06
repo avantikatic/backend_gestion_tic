@@ -46,6 +46,7 @@ class GestionContinuidad:
         except Exception as e:
             print(f"Error obteniendo módulos GSC: {e}")
             return self.tools.output(500, "Error obteniendo módulos.", {})
+
     def obtener_tipos_evidencia_gsc(self):
         """
         Obtiene todos los tipos de evidencia disponibles para el módulo GSC

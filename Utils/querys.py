@@ -4,6 +4,8 @@ from sqlalchemy import text, func, case, extract, and_, or_, Date, cast
 from datetime import datetime, date
 import json
 import traceback
+import os
+from pathlib import Path
 from Models.IntranetGraphTokenModel import IntranetGraphTokenModel as TokenModel
 from Models.IntranetCorreosMicrosoftModel import IntranetCorreosMicrosoftModel as CorreosMicrosoftModel
 from Models.IntranetSyncLogModel import IntranetSyncLogModel as SyncLogModel
@@ -2080,7 +2082,7 @@ class Querys:
     def crear_licencia(self, data):
         """Crea una nueva licencia en la base de datos"""
         from Models.IntranetLicenciasHistorialModel import IntranetLicenciasHistorialModel
-        import json
+    
         
         try:
             # Crear la licencia (el ID se genera automáticamente)
@@ -3249,7 +3251,7 @@ class Querys:
             # Convertir array de correos CC a JSON string si es necesario
             correos_cc_json = None
             if data.get('correos_cc'):
-                import json
+            
                 if isinstance(data['correos_cc'], list):
                     correos_cc_json = json.dumps(data['correos_cc'])
                 else:
@@ -3589,7 +3591,7 @@ class Querys:
             # Parsear correos_cc de JSON a array
             if resultado.get('correos_cc'):
                 try:
-                    import json
+                
                     resultado['correos_cc'] = json.loads(resultado['correos_cc'])
                 except:
                     resultado['correos_cc'] = []
@@ -3838,7 +3840,7 @@ class Querys:
                 registro.enviar_contactos_empresa = data['enviar_contactos_empresa']
             if 'correos_cc' in data:
                 # Convertir array a JSON string si es necesario
-                import json
+            
                 if isinstance(data['correos_cc'], list):
                     registro.correos_cc = json.dumps(data['correos_cc'])
                 else:
@@ -4516,15 +4518,15 @@ class Querys:
             html_body = self._generar_html_notificacion_gsc(registro_data, modulo_data, codigo_modulo, id_registro)
             
             # Enviar correo
-            tools = Tools()
             subject = f"Notificación GSC - {codigo_modulo} - Registro #{id_registro}"
-            to_email = "gerencia@avantika.com.co"
-            cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co", "sistemas@avantika.com.co"]
+            # to_email = "gerencia@avantika.com.co"
+            to_email = "sistemas@avantika.com.co"
+            cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co"]
             
             # Agregar correos CC adicionales si está activado
             if registro.enviar_contactos_empresa and registro.correos_cc:
                 try:
-                    import json
+                
                     correos_adicionales = json.loads(registro.correos_cc)
                     if isinstance(correos_adicionales, list):
                         cc_emails.extend(correos_adicionales)
@@ -4534,11 +4536,12 @@ class Querys:
             mail_sender = "tic@avantika.com.co"
             
             # Ruta del logo - Usar logo.png en la raíz del proyecto
-            import os
-            from pathlib import Path
             logo_path = Path(__file__).parent.parent / "logo.png"
             
-            tools.send_email_individual(
+            print(f"enviar_contactos_empresa: {registro.enviar_contactos_empresa}")
+            print(f"correos_cc: {registro.correos_cc}")
+            
+            self.tools.send_email_individual(
                 to_email=to_email,
                 cc_emails=cc_emails,
                 subject=subject,
