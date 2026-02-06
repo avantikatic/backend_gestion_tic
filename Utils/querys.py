@@ -4532,7 +4532,7 @@ class Querys:
             # CASO 1: Ambos checkbox activos - Enviar 1 correo con todos los destinatarios
             if registro.notificar_gerencia and registro.enviar_contactos_empresa:
                 to_email = "gerencia@avantika.com.co"
-                cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co", "sistemas@avantika.com.co"]
+                cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co"]
                 
                 # Agregar correos de contactos empresa
                 if registro.correos_cc:
@@ -4546,7 +4546,7 @@ class Querys:
             # CASO 2: Solo notificar a gerencia
             elif registro.notificar_gerencia:
                 to_email = "gerencia@avantika.com.co"
-                cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co", "sistemas@avantika.com.co"]
+                cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co"]
   
             # CASO 3: Solo enviar a contactos empresa
             elif registro.enviar_contactos_empresa:
@@ -4581,7 +4581,8 @@ class Querys:
                 subject=subject,
                 body=html_body,
                 logo_path=str(logo_path) if logo_path.exists() else None,
-                mail_sender=mail_sender
+                mail_sender=mail_sender,
+                db=self.db  # Pasar sesión de BD para usar Graph API
             )
             
             print(f"Notificación enviada exitosamente para registro {id_registro}")

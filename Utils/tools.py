@@ -34,6 +34,9 @@ load_dotenv()
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 25))
 
+# Flag para determinar método de envío de correos
+USE_GRAPH_FOR_EMAIL = os.getenv("USE_GRAPH_FOR_EMAIL", "true").lower() == "true"
+
 class Tools:
 
     def outputpdf(self, codigo, file_name, data={}):
@@ -109,9 +112,68 @@ class Tools:
         return valor_decimal
 
     # Función para enviar correos electrónicos
-    def send_email_individual(self, to_email, cc_emails, subject, body, logo_path=None, mail_sender=None):
-        """Envía un correo electrónico a un destinatario con copia a otros y adjunta un logo si está disponible."""
-
+    def send_email_individual(self, to_email, cc_emails, subject, body, logo_path=None, mail_sender=None, db=None):
+        """
+        Envía un correo electrónico usando Microsoft Graph API (recomendado) o SMTP (fallback).
+        
+        Args:
+            to_email (str): Destinatario principal
+            cc_emails (list): Lista de correos en copia
+            subject (str): Asunto del correo
+            body (str): Contenido HTML del correo
+            logo_path (str): Ruta al logo (para SMTP, opcional)
+            mail_sender (str): Dirección del remitente
+            db: Sesión de base de datos (requerida para Graph API)
+        """
+        # Usar Microsoft Graph API si está habilitado y hay sesión de BD
+        if USE_GRAPH_FOR_EMAIL and db:
+            try:
+                from Class.Graph import Graph
+                
+                graph = Graph(db)
+                
+                # Si hay logo, embederlo en el HTML como base64 (opcional)
+                body_with_logo = body
+                if logo_path and os.path.exists(logo_path):
+                    try:
+                        import base64
+                        with open(logo_path, 'rb') as img_file:
+                            logo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+                            # Reemplazar el Content-ID si existe en el HTML
+                            if 'cid:company_logo' in body:
+                                body_with_logo = body.replace(
+                                    'cid:company_logo',
+                                    f'data:image/png;base64,{logo_base64}'
+                                )
+                    except Exception as e:
+                        print(f"⚠️ Advertencia: No se pudo embeder logo en correo: {e}")
+                
+                # Enviar correo usando Graph API
+                resultado = graph.enviar_correo_graph(
+                    from_email=mail_sender,
+                    to_email=to_email,
+                    cc_emails=cc_emails if cc_emails else [],
+                    subject=subject,
+                    body_html=body_with_logo
+                )
+                
+                if resultado.get('success'):
+                    print(f"✅ Correo enviado exitosamente a {to_email} usando Graph API")
+                    if cc_emails:
+                        print(f"   CC: {', '.join(cc_emails)}")
+                else:
+                    print(f"❌ Error enviando correo con Graph API: {resultado.get('message')}")
+                    raise Exception(resultado.get('message'))
+                
+                return
+                
+            except ImportError:
+                print("⚠️ No se pudo importar Graph, usando SMTP como fallback")
+            except Exception as ex:
+                print(f"⚠️ Error con Graph API, usando SMTP como fallback: {ex}")
+        
+        # Fallback a SMTP si Graph no está disponible o falló
+        print(f"📧 Enviando correo usando SMTP (fallback)")
         msg = MIMEMultipart()
         msg['From'] = mail_sender
         msg['To'] = to_email

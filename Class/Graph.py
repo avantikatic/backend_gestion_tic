@@ -2,7 +2,7 @@ import requests
 from Utils.tools import Tools, CustomException
 from Utils.querys import Querys
 from Models.IntranetGraphTokenModel import IntranetGraphTokenModel as TokenModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import traceback
 
@@ -1248,3 +1248,241 @@ class Graph:
         except Exception as e:
             print(f"Error enviando correo automático: {e}")
             return self.tools.output(500, f"Error interno del servidor: {str(e)}")
+
+    def enviar_correo_graph(self, from_email, to_email, cc_emails=None, subject="", body_html="", attachments=None):
+        """
+        Método genérico para enviar correos usando Microsoft Graph API.
+        
+        Args:
+            from_email (str): Dirección de correo del remitente (debe tener permisos)
+            to_email (str): Dirección de correo del destinatario principal
+            cc_emails (list): Lista de correos en copia (opcional)
+            subject (str): Asunto del correo
+            body_html (str): Contenido del correo en formato HTML
+            attachments (list): Lista de diccionarios con attachments (opcional)
+                Formato: [{'name': 'archivo.pdf', 'contentBytes': 'base64_string', 'contentType': 'application/pdf'}]
+        
+        Returns:
+            dict: Respuesta con status y mensaje
+        """
+        try:
+            # Obtener token válido para envío (con manejo correcto de timezone)
+            self.token = self._obtener_token_para_envio()
+            
+            if not self.token:
+                print("❌ No se pudo obtener token de acceso para enviar correo")
+                return {'success': False, 'message': 'No se pudo obtener token de acceso'}
+            
+            # Construir lista de destinatarios
+            to_recipients = [{
+                "emailAddress": {
+                    "address": to_email
+                }
+            }]
+            
+            # Construir lista de CC si existen
+            cc_recipients = []
+            if cc_emails and isinstance(cc_emails, list):
+                cc_recipients = [
+                    {"emailAddress": {"address": cc}} 
+                    for cc in cc_emails if cc and isinstance(cc, str)
+                ]
+            
+            # Construir cuerpo del mensaje
+            message = {
+                "subject": subject,
+                "body": {
+                    "contentType": "HTML",
+                    "content": body_html
+                },
+                "toRecipients": to_recipients
+            }
+            
+            # Agregar CC si hay
+            if cc_recipients:
+                message["ccRecipients"] = cc_recipients
+            
+            # Agregar attachments si hay
+            if attachments and isinstance(attachments, list):
+                message["attachments"] = attachments
+            
+            # Construir payload completo
+            email_data = {
+                "message": message,
+                "saveToSentItems": "true"
+            }
+            
+            # Endpoint para enviar correo - usar helper para construir URL correctamente
+            send_url = self._build_graph_url(f"users/{from_email}/sendMail")
+            
+            headers_send = {
+                'Authorization': f'Bearer {self.token}',
+                'Content-Type': 'application/json'
+            }
+            
+            print(f"📧 Enviando correo desde {from_email} a {to_email}")
+            print(f"   Endpoint: {send_url}")
+            if cc_recipients:
+                cc_list = [cc['emailAddress']['address'] for cc in cc_recipients]
+                print(f"📋 CC: {', '.join(cc_list)}")
+            
+            # Enviar correo
+            response = requests.post(send_url, json=email_data, headers=headers_send)
+            
+            if response.status_code == 202:
+                print(f"✅ Correo enviado exitosamente")
+                return {
+                    'success': True,
+                    'message': 'Correo enviado exitosamente',
+                    'from': from_email,
+                    'to': to_email,
+                    'cc': cc_emails,
+                    'subject': subject
+                }
+            else:
+                print(f"❌ Error enviando correo - Status: {response.status_code}")
+                print(f"📋 Response: {response.text}")
+                return {
+                    'success': False,
+                    'message': f'Error enviando correo: {response.status_code}',
+                    'error': response.text
+                }
+                
+        except Exception as e:
+            print(f"❌ Error enviando correo con Graph: {e}")
+            traceback.print_exc()
+            return {
+                'success': False,
+                'message': f'Error interno: {str(e)}'
+            }
+
+    def _obtener_token_para_envio(self):
+        """
+        Obtiene un token válido para envío de correos.
+        Método específico que maneja correctamente los timezones UTC.
+        NO modifica las funciones existentes que se usan para otras operaciones.
+        
+        Returns:
+            str: Token válido o None si falla
+        """
+        try:
+            # Obtener token desde BD
+            result = self.querys.get_token()
+            
+            if result:
+                # Validar si el token aún está vigente (con timezone UTC)
+                token_valido = self._validar_token_con_timezone(result)
+                if token_valido:
+                    return result['token']
+                else:
+                    # Token expirado, desactivar
+                    token_id = result.get('id')
+                    if token_id:
+                        self.querys.desactivar_token(token_id)
+                        print(f"🗑️ Token {token_id} desactivado (expirado)")
+            
+            # Si no hay token válido, obtener uno nuevo
+            print("🔄 Obteniendo nuevo token para envío de correos...")
+            return self._crear_nuevo_token_con_timezone()
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo token para envío: {e}")
+            traceback.print_exc()
+            return None
+    
+    def _validar_token_con_timezone(self, result: dict):
+        """
+        Valida si un token aún está vigente considerando timezone UTC.
+        Método específico para envío de correos.
+        
+        Args:
+            result (dict): Resultado de la BD con token y fecha_vencimiento
+        
+        Returns:
+            bool: True si el token es válido, False si expiró
+        """
+        try:
+            fecha_vencimiento_str = result.get('fecha_vencimiento')
+            if not fecha_vencimiento_str:
+                return False
+            
+            # Convertir a datetime si es string
+            if isinstance(fecha_vencimiento_str, str):
+                fecha_vencimiento = datetime.fromisoformat(fecha_vencimiento_str.replace('Z', '+00:00'))
+            else:
+                fecha_vencimiento = fecha_vencimiento_str
+            
+            # Asegurar que tenga timezone (asumir UTC si no lo tiene)
+            if fecha_vencimiento.tzinfo is None:
+                fecha_vencimiento = fecha_vencimiento.replace(tzinfo=timezone.utc)
+            
+            # Comparar con tiempo actual en UTC
+            ahora_utc = datetime.now(timezone.utc)
+            
+            # Margen de seguridad: renovar token 5 minutos antes de que expire
+            margen_seguridad = timedelta(minutes=5)
+            
+            es_valido = ahora_utc + margen_seguridad < fecha_vencimiento
+            
+            if es_valido:
+                tiempo_restante = (fecha_vencimiento - ahora_utc).total_seconds() / 60
+                print(f"✅ Token válido (expira en {tiempo_restante:.1f} minutos)")
+            else:
+                print(f"⚠️ Token expirado o por expirar pronto")
+                print(f"   Vencimiento: {fecha_vencimiento}")
+                print(f"   Ahora (UTC): {ahora_utc}")
+            
+            return es_valido
+            
+        except Exception as e:
+            print(f"❌ Error validando token con timezone: {e}")
+            return False
+    
+    def _crear_nuevo_token_con_timezone(self):
+        """
+        Crea un nuevo token desde Microsoft Graph API con fecha de vencimiento en UTC.
+        Método específico para envío de correos.
+        
+        Returns:
+            str: Token válido o None si falla
+        """
+        try:
+            url = f"{MICROSOFT_URL}{MICROSOFT_TENANT_ID}/oauth2/v2.0/token"
+            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+            data = {
+                'client_id': MICROSOFT_CLIENT_ID,
+                'scope': ' '.join(MICROSOFT_API_SCOPE),
+                'client_secret': MICROSOFT_CLIENT_SECRET,
+                'grant_type': 'client_credentials'
+            }
+            
+            response = requests.post(url, headers=headers, data=data)
+            
+            if response.status_code == 200:
+                token = response.json().get('access_token')
+                expires_in = response.json().get('expires_in')
+                
+                # Calcular fecha de vencimiento en UTC
+                fecha_vencimiento_utc = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+                
+                data_insert = {
+                    "token": token,
+                    "fecha_vencimiento": fecha_vencimiento_utc
+                }
+                
+                print(f"✅ Nuevo token obtenido exitosamente")
+                print(f"   Expira en: {expires_in} segundos ({expires_in/60:.1f} minutos)")
+                print(f"   Vencimiento (UTC): {fecha_vencimiento_utc}")
+                
+                # Guardar en BD
+                self.querys.insertar_datos(TokenModel, data_insert)
+                return token
+            else:
+                print(f"❌ Error obteniendo token: {response.status_code}")
+                print(f"   Response: {response.text}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error creando nuevo token: {e}")
+            traceback.print_exc()
+            return None
