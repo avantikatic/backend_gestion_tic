@@ -3437,8 +3437,8 @@ class Querys:
             # PASO 5: Commit de toda la transacción
             self.db.commit()
             
-            # PASO 6: Enviar notificación a gerencia si está marcado
-            if data.get('notificar_gerencia', False):
+            # PASO 6: Enviar notificación si al menos uno de los checkbox está activo
+            if data.get('notificar_gerencia', False) or data.get('enviar_contactos_empresa', False):
                 self.enviar_notificacion_gerencia_gsc(id_registro)
             
             return {
@@ -4015,8 +4015,8 @@ class Querys:
             
             self.db.commit()
             
-            # Enviar notificación a gerencia si está marcado
-            if registro.notificar_gerencia:
+            # Enviar notificación si al menos uno de los checkbox está activo
+            if registro.notificar_gerencia or registro.enviar_contactos_empresa:
                 self.enviar_notificacion_gerencia_gsc(id_registro)
             
             return {
@@ -4140,7 +4140,7 @@ class Querys:
                 fecha_incidente = fecha_incidente.strftime('%Y-%m-%d %H:%M:%S')
             
             seccion_modulo = f"""
-            <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="background-color: #e8f4f8; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 2px solid {color_borde};">
                 <h3 style="color: {color_principal}; border-bottom: 3px solid {color_borde}; padding-bottom: 10px; margin-top: 0;">📊 Información de Seguridad</h3>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
@@ -4175,7 +4175,7 @@ class Querys:
         
         elif codigo_modulo == 'DISP':
             seccion_modulo = f"""
-            <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="background-color: #e8f4f8; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 2px solid {color_borde};">
                 <h3 style="color: {color_principal}; border-bottom: 3px solid {color_borde}; padding-bottom: 10px; margin-top: 0;">📈 Información de Disponibilidad</h3>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
@@ -4223,7 +4223,7 @@ class Querys:
                 fecha_fin = fecha_fin.strftime('%Y-%m-%d %H:%M:%S')
             
             seccion_modulo = f"""
-            <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="background-color: #e8f4f8; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 2px solid {color_borde};">
                 <h3 style="color: {color_principal}; border-bottom: 3px solid {color_borde}; padding-bottom: 10px; margin-top: 0;">🔧 Información de Mantenimiento</h3>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
@@ -4271,7 +4271,7 @@ class Querys:
                 fecha_fin = fecha_fin.strftime('%Y-%m-%d %H:%M:%S')
             
             seccion_modulo = f"""
-            <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="background-color: #e8f4f8; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 2px solid {color_borde};">
                 <h3 style="color: {color_principal}; border-bottom: 3px solid {color_borde}; padding-bottom: 10px; margin-top: 0;">🔄 Información de Disaster Recovery</h3>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
@@ -4325,12 +4325,12 @@ class Querys:
                     max-width: 800px; 
                     margin: 20px auto; 
                     background-color: #ffffff;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    border: 1px solid #dddddd;
                     border-radius: 8px;
                     overflow: hidden;
                 }}
                 .header {{ 
-                    background: linear-gradient(135deg, {color_principal} 0%, #ffffff 100%);
+                    background-color: {color_principal};
                     color: white; 
                     padding: 20px 20px; 
                     text-align: left;
@@ -4358,10 +4358,10 @@ class Querys:
                     padding: 35px;
                 }}
                 .info-general {{
-                    background: linear-gradient(135deg, #fff5f5 0%, #ffe5e5 100%);
+                    background-color: #fff0f0;
                     padding: 20px;
                     border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    border: 2px solid #ffcccb;
                 }}
                 .info-general h3 {{
                     color: #e74c3c;
@@ -4426,7 +4426,11 @@ class Querys:
 
     def enviar_notificacion_gerencia_gsc(self, id_registro: int):
         """
-        Envía notificación por correo a gerencia cuando se marca 'Notificar a Gerencia'
+        Envía notificación por correo según los checkbox activos:
+        - Ambos activos: envía 1 correo a gerencia + contactos empresa
+        - Solo notificar_gerencia: envía solo a gerencia
+        - Solo enviar_contactos_empresa: envía solo a contactos empresa
+        - Ninguno activo: no envía nada
         """
         try:
             # Obtener el registro completo
@@ -4439,7 +4443,7 @@ class Querys:
                 return False
             
             # Verificar si debe notificar
-            if not registro.notificar_gerencia:
+            if not registro.notificar_gerencia and not registro.enviar_contactos_empresa:
                 return True  # No es error, simplemente no debe notificar
             
             # Obtener código del módulo
@@ -4517,30 +4521,60 @@ class Querys:
             # Generar HTML del correo (pasar id_registro para obtener sistemas afectados)
             html_body = self._generar_html_notificacion_gsc(registro_data, modulo_data, codigo_modulo, id_registro)
             
-            # Enviar correo
+            # Configurar destinatarios según los checkbox activos
             subject = f"Notificación GSC - {codigo_modulo} - Registro #{id_registro}"
-            # to_email = "gerencia@avantika.com.co"
-            to_email = "sistemas@avantika.com.co"
-            cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co"]
-            
-            # Agregar correos CC adicionales si está activado
-            if registro.enviar_contactos_empresa and registro.correos_cc:
-                try:
-                
-                    correos_adicionales = json.loads(registro.correos_cc)
-                    if isinstance(correos_adicionales, list):
-                        cc_emails.extend(correos_adicionales)
-                except Exception as e:
-                    print(f"Error parseando correos CC: {e}")
-            
             mail_sender = "tic@avantika.com.co"
+            
+            # Determinar destinatarios según checkbox activos
+            to_email = None
+            cc_emails = []
+            
+            # CASO 1: Ambos checkbox activos - Enviar 1 correo con todos los destinatarios
+            if registro.notificar_gerencia and registro.enviar_contactos_empresa:
+                to_email = "gerencia@avantika.com.co"
+                cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co", "sistemas@avantika.com.co"]
+                
+                # Agregar correos de contactos empresa
+                if registro.correos_cc:
+                    try:
+                        correos_adicionales = json.loads(registro.correos_cc)
+                        if isinstance(correos_adicionales, list):
+                            cc_emails.extend(correos_adicionales)
+                    except Exception as e:
+                        print(f"Error parseando correos CC: {e}")
+ 
+            # CASO 2: Solo notificar a gerencia
+            elif registro.notificar_gerencia:
+                to_email = "gerencia@avantika.com.co"
+                cc_emails = ["auxiliartic@avantika.com.co", "tic@avantika.com.co", "sistemas@avantika.com.co"]
+  
+            # CASO 3: Solo enviar a contactos empresa
+            elif registro.enviar_contactos_empresa:
+                if registro.correos_cc:
+                    try:
+                        correos_adicionales = json.loads(registro.correos_cc)
+                        if isinstance(correos_adicionales, list) and len(correos_adicionales) > 0:
+                            to_email = correos_adicionales[0]  # Primer correo como destinatario principal
+                            cc_emails = correos_adicionales[1:] if len(correos_adicionales) > 1 else []
+                            cc_emails.extend(["auxiliartic@avantika.com.co", "tic@avantika.com.co", "sistemas@avantika.com.co"])  # Agregar TIC en CC
+                        else:
+                            print(f"No hay correos de contactos empresa para enviar")
+                            return True
+                    except Exception as e:
+                        print(f"Error parseando correos CC: {e}")
+                        return False
+                else:
+                    print(f"No hay correos de contactos empresa para enviar")
+                    return True
+  
+            # Si no hay destinatario, no enviar
+            if not to_email:
+                print(f"No hay destinatarios configurados")
+                return True
             
             # Ruta del logo - Usar logo.png en la raíz del proyecto
             logo_path = Path(__file__).parent.parent / "logo.png"
-            
-            print(f"enviar_contactos_empresa: {registro.enviar_contactos_empresa}")
-            print(f"correos_cc: {registro.correos_cc}")
-            
+
             self.tools.send_email_individual(
                 to_email=to_email,
                 cc_emails=cc_emails,
