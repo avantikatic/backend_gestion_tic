@@ -51,6 +51,7 @@ from Models.IntranetGscRegistrosSeguridadModel import IntranetGscRegistrosSeguri
 from Models.IntranetGscRegistrosDisponibilidadModel import IntranetGscRegistrosDisponibilidad
 from Models.IntranetGscRegistrosMantenimientoModel import IntranetGscRegistrosMantenimiento
 from Models.IntranetGscRegistrosDisasterRecoveryModel import IntranetGscRegistrosDisasterRecovery
+from Models.IntranetGscResultadosModel import IntranetGscResultados
 
 import hashlib
 
@@ -3285,9 +3286,11 @@ class Querys:
         2. Sistemas afectados (relación muchos a muchos)
         3. Evidencias (con sus datos específicos según tipo)
         4. Datos específicos del módulo (SEG/DISP/MNT/DR)
+        5. Resultados iniciales (bitácora - opcional)
         
         Parámetros:
             data: Diccionario con la estructura completa del registro
+                - resultados_iniciales: Lista de strings con textos de resultados (opcional)
         
         Retorna:
             dict: {'success': bool, 'id_registro': int, 'message': str}
@@ -3482,10 +3485,23 @@ class Querys:
                 })
                 self.db.add(dr)
             
-            # PASO 5: Commit de toda la transacción
+            # PASO 5: Crear resultados iniciales si se proporcionan
+            resultados_iniciales = data.get('resultados_iniciales', [])
+            if resultados_iniciales and len(resultados_iniciales) > 0:
+                for texto_resultado in resultados_iniciales:
+                    if texto_resultado and texto_resultado.strip():
+                        resultado = IntranetGscResultados({
+                            'id_registro': id_registro,
+                            'texto': texto_resultado.strip(),
+                            'created_at': self._get_fecha_colombia(),
+                            'activo': True
+                        })
+                        self.db.add(resultado)
+            
+            # PASO 6: Commit de toda la transacción
             self.db.commit()
             
-            # PASO 6: Enviar notificación si al menos uno de los checkbox está activo
+            # PASO 7: Enviar notificación si al menos uno de los checkbox está activo
             if data.get('notificar_gerencia', False) or data.get('enviar_contactos_empresa', False):
                 self.enviar_notificacion_gerencia_gsc(id_registro)
             
@@ -4121,6 +4137,72 @@ class Querys:
                 'message': f'Error eliminando registro: {str(e)}'
             }
 
+    # ========================================
+    # MÉTODOS CRUD PARA RESULTADOS GSC
+    # ========================================
+
+    def crear_resultado_gsc(self, data: dict):
+        """
+        Crea un nuevo resultado (entrada de bitácora) para un registro GSC
+        """
+        try:
+            # Validar que el registro existe y está activo
+            registro = self.db.query(IntranetGscRegistros).filter(
+                IntranetGscRegistros.id == data.get('id_registro'),
+                IntranetGscRegistros.activo == True
+            ).first()
+            
+            if not registro:
+                return {'success': False, 'message': 'Registro no encontrado'}
+            
+            # Crear el resultado con fecha en zona horaria de Colombia
+            resultado = IntranetGscResultados({
+                'id_registro': data.get('id_registro'),
+                'texto': data.get('texto'),
+                'created_at': self._get_fecha_colombia(),
+                'activo': True
+            })
+            
+            self.db.add(resultado)
+            self.db.commit()
+            self.db.refresh(resultado)
+            
+            return {
+                'success': True,
+                'message': 'Resultado creado exitosamente',
+                'id_resultado': resultado.id,
+                'data': resultado.to_dict()
+            }
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creando resultado GSC: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'success': False,
+                'message': f'Error creando resultado: {str(e)}'
+            }
+
+    def listar_resultados_gsc(self, id_registro: int):
+        """
+        Lista todos los resultados (entradas de bitácora) de un registro GSC
+        Ordenados por fecha de creación descendente (más reciente primero)
+        """
+        try:
+            resultados = self.db.query(IntranetGscResultados).filter(
+                IntranetGscResultados.id_registro == id_registro,
+                IntranetGscResultados.activo == True
+            ).order_by(IntranetGscResultados.created_at.desc()).all()
+            
+            return [resultado.to_dict() for resultado in resultados]
+            
+        except Exception as e:
+            print(f"Error listando resultados GSC: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
     def _generar_html_notificacion_gsc(self, registro_data: dict, modulo_data: dict, codigo_modulo: str, id_registro: int) -> str:
         """
         Genera el HTML para el correo de notificación a gerencia
@@ -4170,6 +4252,33 @@ class Querys:
         # Verde pastel oscuro: #5a9e7a
         color_principal = "#5a9e7a"
         color_borde = "#4a8a6a"
+        
+        # Obtener resultados (bitácora) del registro
+        resultados = self.listar_resultados_gsc(id_registro)
+        resultados_html = ""
+        
+        if resultados and len(resultados) > 0:
+            # Generar filas de resultados
+            filas_resultados = ""
+            for idx, resultado in enumerate(resultados):
+                bg_color = "#ffffff" if idx % 2 == 0 else "#f8f9fa"
+                fecha_formateada = resultado['created_at'][:16].replace('T', ' ')  # Formato: "2026-02-09 10:30"
+                
+                filas_resultados += f"""
+                <tr>
+                    <td style="padding: 12px; background-color: {bg_color}; font-weight: bold; width: 200px; vertical-align: top; border-bottom: 1px solid #e0e0e0;">{fecha_formateada}</td>
+                    <td style="padding: 12px; background-color: {bg_color}; border-bottom: 1px solid #e0e0e0; white-space: pre-wrap;">{resultado['texto']}</td>
+                </tr>
+                """
+            
+            resultados_html = f"""
+            <div style="background-color: #e8f5e9; padding: 20px; border-radius: 8px; border: 2px solid #81c784; margin-top: 20px;">
+                <h3 style="color: #2e7d32; border-bottom: 3px solid #388e3c; padding-bottom: 10px; margin-top: 0;">📝 Resultados (Bitácora)</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    {filas_resultados}
+                </table>
+            </div>
+            """
         
         # Generar sección específica del módulo
         seccion_modulo = ""
@@ -4468,6 +4577,8 @@ class Querys:
                             {sistemas_html}
                         </table>
                     </div>
+                    
+                    {resultados_html}
                 </div>
                 
                 <div class="footer">

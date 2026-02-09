@@ -77,7 +77,8 @@ def crear_registro_gsc(data: dict = Body(...), db: Session = Depends(get_db)):
             }
         ],
         "datos_modulo": {...},
-        "usuario_creacion": str
+        "usuario_creacion": str,
+        "resultados_iniciales": [str] (opcional - lista de textos para bitácora)
     }
     """
     response = GestionContinuidad(db).crear_registro_gsc(data)
@@ -168,6 +169,45 @@ def eliminar_registro_gsc(data: dict = Body(...), db: Session = Depends(get_db))
         return {"status": 400, "message": "ID de registro requerido", "data": {}}
     
     response = GestionContinuidad(db).eliminar_registro_gsc(id_registro)
+    return response
+
+@gestion_continuidad_router.post('/crear_resultado_gsc', tags=["GESTION_CONTINUIDAD"], response_model=dict)
+def crear_resultado_gsc(data: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Crea un nuevo resultado (entrada de bitácora) para un registro GSC.
+    
+    Estructura esperada:
+    {
+        "id_registro": int,
+        "texto": str
+    }
+    """
+    id_registro = data.get('id_registro')
+    texto = data.get('texto')
+    
+    if not id_registro or not texto:
+        return {"status": 400, "message": "ID de registro y texto son requeridos", "data": {}}
+    
+    response = GestionContinuidad(db).crear_resultado_gsc(data)
+    return response
+
+@gestion_continuidad_router.post('/listar_resultados_gsc', tags=["GESTION_CONTINUIDAD"], response_model=dict)
+def listar_resultados_gsc(data: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Lista todos los resultados (entradas de bitácora) de un registro GSC.
+    Ordenados por fecha de creación descendente (más reciente primero).
+    
+    Parámetros:
+    {
+        "id_registro": int
+    }
+    """
+    id_registro = data.get('id_registro')
+    
+    if not id_registro:
+        return {"status": 400, "message": "ID de registro requerido", "data": {}}
+    
+    response = GestionContinuidad(db).listar_resultados_gsc(id_registro)
     return response
 
 @gestion_continuidad_router.get('/obtener_imagen_evidencia/{nombre_archivo}', tags=["GESTION_CONTINUIDAD"])

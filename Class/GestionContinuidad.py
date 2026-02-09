@@ -203,3 +203,34 @@ class GestionContinuidad:
         except Exception as e:
             print(f"Error eliminando registro GSC: {e}")
             return self.tools.output(500, "Error eliminando registro.", {})
+
+    def crear_resultado_gsc(self, data: dict):
+        """
+        Crea un nuevo resultado (entrada de bitácora) para un registro GSC
+        """
+        try:
+            resultado = self.querys.crear_resultado_gsc(data)
+            
+            if resultado['success']:
+                return self.tools.output(201, resultado['message'], resultado['data'])
+            else:
+                return self.tools.output(400, resultado['message'], {})
+                
+        except Exception as e:
+            print(f"Error creando resultado GSC: {e}")
+            import traceback
+            traceback.print_exc()
+            return self.tools.output(500, "Error creando resultado.", {})
+
+    def listar_resultados_gsc(self, id_registro: int):
+        """
+        Lista todos los resultados (entradas de bitácora) de un registro GSC
+        """
+        try:
+            resultados = self.querys.listar_resultados_gsc(id_registro)
+            
+            return self.tools.output(200, "Resultados obtenidos exitosamente.", resultados)
+                
+        except Exception as e:
+            print(f"Error listando resultados GSC: {e}")
+            return self.tools.output(500, "Error listando resultados.", {})
