@@ -1440,7 +1440,7 @@ class Querys:
 
             # 1. Tickets completados por mes
             completados_q = self.db.query(
-                extract('month', CorreosMicrosoftModel.fecha_vencimiento).label('mes'),
+                extract('month', CorreosMicrosoftModel.fecha_cierre).label('mes'),
                 func.count().label('total_completados'),
                 func.sum(case(
                     (and_(CorreosMicrosoftModel.fecha_vencimiento != None, cast(CorreosMicrosoftModel.fecha_cierre, Date) <= cast(CorreosMicrosoftModel.fecha_vencimiento, Date)), 1),
