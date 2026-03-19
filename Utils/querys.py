@@ -3798,7 +3798,9 @@ class Querys:
             estado_map = {e.nombre: e.id for e in estados}
 
             # Query base para contar
-            query_base = self.db.query(func.count(IntranetGscRegistros.id))
+            query_base = self.db.query(
+                func.count(IntranetGscRegistros.id)).filter(
+                    IntranetGscRegistros.activo == True)
             
             # Si hay filtro de módulo, aplicarlo
             if id_modulo:
