@@ -3793,7 +3793,8 @@ class Querys:
             id_modulo = filtros.get('id_modulo') if filtros else None
 
             # Obtener IDs de estados
-            estados = self.db.query(IntranetGscEstados).all()
+            estados = self.db.query(IntranetGscEstados).filter(
+                IntranetGscEstados.activo == True).all()
             estado_map = {e.nombre: e.id for e in estados}
 
             # Query base para contar
