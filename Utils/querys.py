@@ -1,6 +1,7 @@
 from Utils.tools import Tools, CustomException
 from Utils.file_handler import FileHandler
-from sqlalchemy import text, func, case, extract, and_, or_, Date, cast
+from sqlalchemy import text, func, case, extract, and_, or_, Date, cast, collate
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, date
 import json
 import traceback
@@ -239,17 +240,18 @@ class Querys:
     # ============= MÉTODOS PARA CORREOS MICROSOFT =============
 
     # Query para generar hash del contenido del correo
-    def generar_hash_contenido(self, subject, body_preview, from_email):
+    def generar_hash_contenido(self, subject, body_preview, from_email, received_date=None):
         """Genera un hash del contenido del correo para detectar cambios"""
-        contenido = f"{subject}{body_preview}{from_email}"
+        fecha_str = received_date.isoformat() if hasattr(received_date, 'isoformat') else str(received_date or '')
+        contenido = f"{subject}{body_preview}{from_email}{fecha_str}"
         return hashlib.sha256(contenido.encode()).hexdigest()
     
     # Query para obtener un correo por su message_id de Microsoft
     def obtener_correo_por_message_id(self, message_id):
-        """Obtiene un correo por su message_id de Microsoft"""
+        """Obtiene un correo por su message_id de Microsoft (case-sensitive)"""
         try:
             correo = self.db.query(CorreosMicrosoftModel).filter(
-                CorreosMicrosoftModel.message_id == message_id
+                collate(CorreosMicrosoftModel.message_id, 'Latin1_General_CS_AS') == message_id
             ).first()
             
             return correo.to_dict() if correo else None
@@ -294,7 +296,8 @@ class Querys:
             hash_contenido = self.generar_hash_contenido(
                 correo_data.get('subject', ''),
                 correo_data.get('body_preview', ''),
-                correo_data.get('from_email', '')
+                correo_data.get('from_email', ''),
+                correo_data.get('received_date')
             )
             correo_data['hash_contenido'] = hash_contenido
             
@@ -304,7 +307,17 @@ class Querys:
             self.db.refresh(nuevo_correo)
             
             return nuevo_correo.to_dict()
-            
+
+        except IntegrityError:
+            # El message_id ya existe (duplicado por sync concurrente o respuesta ya registrada)
+            self.db.rollback()
+            message_id = correo_data.get('message_id')
+            print(f"⚠️ Correo con message_id '{message_id}' ya existe en BD, omitiendo inserción.")
+            correo_existente = self.db.query(CorreosMicrosoftModel).filter(
+                CorreosMicrosoftModel.message_id == message_id
+            ).first()
+            return correo_existente.to_dict() if correo_existente else None
+
         except Exception as e:
             self.db.rollback()
             print(f"Error insertando correo: {e}")
@@ -312,10 +325,10 @@ class Querys:
     
     # Query para actualizar un correo existente
     def actualizar_correo(self, message_id, datos_actualizacion):
-        """Actualiza un correo existente"""
+        """Actualiza un correo existente (case-sensitive)"""
         try:
             correo = self.db.query(CorreosMicrosoftModel).filter(
-                CorreosMicrosoftModel.message_id == message_id
+                collate(CorreosMicrosoftModel.message_id, 'Latin1_General_CS_AS') == message_id
             ).first()
             
             if correo:
@@ -373,11 +386,11 @@ class Querys:
     # Query para obtener un correo por su message_id
     def obtener_correo_por_message_id(self, message_id):
         """
-        Obtiene un correo por su message_id
+        Obtiene un correo por su message_id (case-sensitive)
         """
         try:
             correo = self.db.query(CorreosMicrosoftModel).filter(
-                CorreosMicrosoftModel.message_id == message_id
+                collate(CorreosMicrosoftModel.message_id, 'Latin1_General_CS_AS') == message_id
             ).first()
             
             if correo:
@@ -1033,36 +1046,13 @@ class Querys:
     # Query para registrar una respuesta entrante en el historial del ticket
     def registrar_respuesta_entrante_ticket(self, respuesta_data):
         """
-        Registra una respuesta entrante en el historial del ticket
+        Registra una respuesta entrante en el historial del ticket.
+        NOTA: Ya no inserta en intranet_correos_microsoft para evitar duplicados de message_id.
+        El correo aparecerá en bandeja normalmente con estado=1 (insertado por sincronizar_correos_inteligente).
         """
-        try:
-            # Por ahora, vamos a insertarlo como un correo normal pero marcado como respuesta
-            # En el futuro se puede crear una tabla específica para respuestas
-            
-            # Crear entrada usando el constructor correcto del modelo
-            correo_data = {
-                'message_id': respuesta_data.get('message_id'),
-                'subject': f"[RESPUESTA] {respuesta_data.get('subject', '')}",
-                'from_email': respuesta_data.get('from_email'),
-                'from_name': respuesta_data.get('from_name'),
-                'received_date': respuesta_data.get('received_date'),
-                'body_preview': respuesta_data.get('subject', '')[:100],
-                'body_content': respuesta_data.get('body_content'),
-                'estado': 2  # Estado 2 = Respuesta procesada (no aparece en buzón)
-            }
-            
-            correo_respuesta = CorreosMicrosoftModel(correo_data)
-            
-            self.db.add(correo_respuesta)
-            self.db.commit()
-            
-            print(f"✅ Respuesta registrada para ticket {respuesta_data.get('ticket_id')}")
-            return True
-            
-        except Exception as e:
-            print(f"Error registrando respuesta entrante: {e}")
-            self.db.rollback()
-            return False
+        # Solo loggear — la inserción real la hace insertar_correo en el flujo principal
+        print(f"📥 Respuesta entrante registrada para ticket {respuesta_data.get('ticket_id')} | subject: {respuesta_data.get('subject', '')}")
+        return True
 
     # Query para actualizar la fecha de última actividad de un ticket
     def actualizar_ultima_actividad_ticket(self, ticket_id):

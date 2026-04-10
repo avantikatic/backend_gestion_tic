@@ -111,15 +111,23 @@ class Graph:
             return stats
         
         # Filtrar correos spam
-        emails_filtrados = [
+        emails_filtrados_raw = [
             email for email in emails_graph
             if not email['from']['emailAddress']['address'].lower().startswith(('postmaster', 'noreply'))
             and not email['subject'].startswith(('[!!Spam]', '[!!Massmail]'))
         ]
-        
-        # Obtener message_ids existentes en BD para comparación rápida
-        message_ids_existentes = self.querys.obtener_message_ids_existentes()
-        
+
+        emails_filtrados_spam = len(emails_graph) - len(emails_filtrados_raw)
+
+        # Deduplicar por message_id (Graph puede retornar duplicados al paginar)
+        seen_ids = set()
+        emails_filtrados = []
+        for email in emails_filtrados_raw:
+            mid = email.get('id')
+            if mid and mid not in seen_ids:
+                seen_ids.add(mid)
+                emails_filtrados.append(email)
+
         for email_graph in emails_filtrados:
             try:
                 message_id = email_graph.get('id')
@@ -128,44 +136,47 @@ class Graph:
                 
                 # Preparar datos del correo para BD
                 correo_data = self._preparar_datos_correo(email_graph)
-                
-                if message_id in message_ids_existentes:
-                    # Correo existe, verificar si hay cambios
-                    correo_existente = self.querys.obtener_correo_por_message_id(message_id)
-                    if correo_existente:
-                        # Comparar hash para detectar cambios
-                        hash_nuevo = self.querys.generar_hash_contenido(
-                            correo_data.get('subject', ''),
-                            correo_data.get('body_preview', ''),
-                            correo_data.get('from_email', '')
-                        )
-                        
-                        if hash_nuevo != correo_existente.get('hash_contenido'):
-                            # Hay cambios, actualizar
-                            self.querys.actualizar_correo(message_id, correo_data)
-                            stats['actualizados'] += 1
-                        else:
-                            stats['sin_cambios'] += 1
-                else:
-                    # Correo nuevo - verificar si es respuesta a un hilo existente
-                    conversation_id = correo_data.get('conversation_id')
-                    
-                    # Verificar si es respuesta usando múltiples criterios
-                    ticket_existente = self._es_respuesta_a_hilo_existente(conversation_id, correo_data)
-                    
-                    if ticket_existente:
-                        # Es una respuesta a un hilo existente
-                        if self._procesar_respuesta_hilo(correo_data, ticket_existente):
-                            stats['respuestas_procesadas'] += 1
+
+                # Verificación directa en BD (más fiable que el set en memoria)
+                correo_existente = self.querys.obtener_correo_por_message_id(message_id)
+
+                if correo_existente:
+                    # Correo existe — verificar si hay cambios en el contenido del correo
+                    hash_nuevo = self.querys.generar_hash_contenido(
+                        correo_data.get('subject', ''),
+                        correo_data.get('body_preview', ''),
+                        correo_data.get('from_email', ''),
+                        correo_data.get('received_date')
+                    )
+
+                    if hash_nuevo != correo_existente.get('hash_contenido'):
+                        campos_actualizar = {
+                            'subject': correo_data.get('subject'),
+                            'from_email': correo_data.get('from_email'),
+                            'from_name': correo_data.get('from_name'),
+                            'received_date': correo_data.get('received_date'),
+                            'body_preview': correo_data.get('body_preview'),
+                            'body_content': correo_data.get('body_content'),
+                            'conversation_id': correo_data.get('conversation_id'),
+                            'attachments_count': correo_data.get('attachments_count'),
+                            'has_attachments': correo_data.get('has_attachments'),
+                            'hash_contenido': hash_nuevo,
+                        }
+                        self.querys.actualizar_correo(message_id, campos_actualizar)
+                        stats['actualizados'] += 1
                     else:
-                        # Es un correo completamente nuevo, crear nuevo ticket
-                        self.querys.insertar_correo(correo_data)
+                        stats['sin_cambios'] += 1
+                else:
+                    # Correo genuinamente nuevo — insertar directamente en bandeja
+                    resultado = self.querys.insertar_correo(correo_data)
+                    if resultado:
                         stats['nuevos'] += 1
                     
             except Exception as e:
                 print(f"Error procesando correo {message_id}: {e}")
                 continue
         
+        print(f"📊 Sync completo — Nuevos: {stats['nuevos']} | Actualizados: {stats['actualizados']} | Sin cambios: {stats['sin_cambios']}")
         return stats
     
     # Helper para preparar datos del correo
@@ -226,14 +237,9 @@ class Graph:
                 if ticket_por_subject:
                     return ticket_por_subject
         
-        # Criterio 3: Buscar por email del remitente en tickets recientes (últimos 7 días)
-        from_email = correo_data.get('from_email')
-        if from_email:
-            ticket_reciente = self.querys.buscar_ticket_reciente_por_email(from_email, days=7)
-            if ticket_reciente and subject:
-                # Verificar si el subject actual contiene palabras clave del ticket original
-                if self._subjects_relacionados(subject, ticket_reciente.get('subject', '')):
-                    return ticket_reciente
+        # Criterio 3: DESHABILITADO — buscar por email del remitente genera falsos positivos 
+        # (correos nuevos del mismo remitente dentro de 7 días se clasifican erróneamente como respuestas)
+        # Solo se considera respuesta si tiene prefijo explícito (Criterio 2) o conversation_id (Criterio 1)
             
         return None
 
@@ -339,24 +345,14 @@ class Graph:
                 
                 # Comparar con tiempo actual
                 ahora = datetime.now()
-                print(f"Fecha vencimiento: {fecha_vencimiento}")
-                print(f"Fecha actual: {ahora}")
                 
                 if ahora < fecha_vencimiento:
-                    # Token aún vigente
-                    print("Token vigente, retornando desde BD")
                     return result['token']
                 else:
-                    # Token expirado, desactivar
-                    print("Token expirado, desactivando...")
                     token_id = result.get('id')
                     if token_id:
-                        # Crear nueva instancia de Querys para desactivar token
                         self.querys.desactivar_token(token_id)
-                        print(f"Token {token_id} desactivado")
 
-        # Si no hay token válido, obtener uno nuevo desde Microsoft Graph
-        print("Obteniendo nuevo token desde Microsoft Graph API...")
         return self._crear_nuevo_token()
 
     # Función para obtener el ID de una carpeta específica
@@ -378,7 +374,8 @@ class Graph:
         iteration = 0
 
         if folder_id:
-            url = f"{MICROSOFT_URL_GRAPH}{EMAIL_USER}/mailFolders/{folder_id}/messages?$top=100&$select=from,subject,receivedDateTime,bodyPreview,body,conversationId,id,hasAttachments"
+            # $orderby=receivedDateTime desc garantiza que los más recientes lleguen primero
+            url = f"{MICROSOFT_URL_GRAPH}{EMAIL_USER}/mailFolders/{folder_id}/messages?$top=100&$orderby=receivedDateTime%20desc&$select=from,subject,receivedDateTime,bodyPreview,body,conversationId,id,hasAttachments"
 
             while url and iteration < max_iterations:
                 data = self._make_request(url)
@@ -387,7 +384,6 @@ class Graph:
 
                 new_emails = data.get('value', [])
                 if not new_emails:
-                    print("No se recuperaron nuevos correos. Deteniendo.")
                     break
 
                 emails.extend(new_emails)

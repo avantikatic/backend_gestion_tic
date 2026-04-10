@@ -7,7 +7,7 @@ class IntranetCorreosMicrosoftModel(BASE):
     __tablename__= "intranet_correos_microsoft"
     
     id = Column(BigInteger, primary_key=True)
-    message_id = Column(String(255), unique=True, nullable=False)  # ID único de Microsoft
+    message_id = Column(String(255, collation='Latin1_General_CS_AS'), unique=True, nullable=False)  # ID único de Microsoft (case-sensitive)
     conversation_id = Column(String(255))  # ID de conversación de Microsoft Graph
     subject = Column(String(500))
     from_email = Column(String(255))
