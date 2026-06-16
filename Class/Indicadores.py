@@ -205,6 +205,110 @@ class Indicadores:
             print(f"Error obteniendo años disponibles: {e}")
             return self.tools.output(500, "Error obteniendo años disponibles.", [])
 
+    # Función para obtener observación de mantenimiento de un mes
+    def obtener_observacion_mes_mantenimiento(self, data=None):
+        try:
+            filtros = data or {}
+            anio = filtros.get('anio')
+            mes  = filtros.get('mes')
+
+            if not anio or not mes:
+                return self.tools.output(400, "Año y mes son requeridos.", {})
+
+            observacion = self.querys.obtener_observacion_mes_mantenimiento(anio, mes)
+            return self.tools.output(200, "Observación obtenida exitosamente.", observacion or {})
+
+        except Exception as e:
+            print(f"Error obteniendo observación de mantenimiento: {e}")
+            return self.tools.output(500, "Error obteniendo observación de mantenimiento.", {})
+
+    # Función para guardar observación de mantenimiento de un mes
+    def guardar_observacion_mes_mantenimiento(self, data=None):
+        try:
+            filtros = data or {}
+            anio         = filtros.get('anio')
+            mes          = filtros.get('mes')
+            observaciones = filtros.get('observaciones', '')
+
+            if not anio or not mes:
+                return self.tools.output(400, "Año y mes son requeridos.", {})
+
+            resultado = self.querys.guardar_observacion_mes_mantenimiento(anio, mes, observaciones)
+            return self.tools.output(200, "Observación guardada exitosamente.", resultado)
+
+        except Exception as e:
+            print(f"Error guardando observación de mantenimiento: {e}")
+            return self.tools.output(500, "Error guardando observación de mantenimiento.", {})
+
+    # Función para obtener análisis de causas de mantenimiento de un año
+    def obtener_analisis_causas_mantenimiento(self, data=None):
+        try:
+            filtros = data or {}
+            anio = filtros.get('anio')
+
+            if not anio:
+                return self.tools.output(400, "Año es requerido.", {})
+
+            resultado = self.querys.obtener_analisis_causas_mantenimiento(anio)
+            return self.tools.output(200, "Análisis de causas de mantenimiento obtenidos exitosamente.", resultado)
+
+        except Exception as e:
+            print(f"Error obteniendo análisis de causas de mantenimiento: {e}")
+            return self.tools.output(500, "Error obteniendo análisis de causas de mantenimiento.", {})
+
+    # Función para guardar análisis de causas de mantenimiento
+    def guardar_analisis_causas_mantenimiento(self, data=None):
+        try:
+            filtros = data or {}
+            id_analisis      = filtros.get('id')
+            anio             = filtros.get('anio')
+            mes              = filtros.get('mes')
+            analisis         = filtros.get('analisis', '')
+            acciones         = filtros.get('acciones', '')
+            responsable      = filtros.get('responsable', '')
+            fecha_compromiso = filtros.get('fecha_compromiso')
+            seguimiento      = filtros.get('seguimiento', '')
+
+            if not anio or not mes:
+                return self.tools.output(400, "Año y mes son requeridos.", {})
+
+            if not isinstance(mes, int) or mes not in (3, 9):
+                return self.tools.output(400, "El mes debe ser 3 (Marzo) o 9 (Septiembre).", {})
+
+            if not id_analisis:
+                existe = self.querys.verificar_analisis_mantenimiento_existe(anio, mes)
+                if existe:
+                    return self.tools.output(400, f"Ya existe un análisis para el mes {mes} del año {anio}.", {})
+
+            resultado = self.querys.guardar_analisis_causas_mantenimiento(
+                id_analisis, anio, mes, analisis, acciones,
+                responsable, fecha_compromiso, seguimiento
+            )
+            return self.tools.output(200, "Análisis de causas de mantenimiento guardado exitosamente.", resultado)
+
+        except Exception as e:
+            print(f"Error guardando análisis de causas de mantenimiento: {e}")
+            return self.tools.output(500, "Error guardando análisis de causas de mantenimiento.", {})
+
+    # Función para obtener indicadores de mantenimiento preventivo TIC
+    def obtener_indicadores_mantenimiento(self, data=None):
+        """
+        Obtiene el indicador de cumplimiento del programa de mantenimiento
+        preventivo TIC para los meses de Marzo y Septiembre.
+        Recibe: { "anio": 2025 }
+        """
+        try:
+            filtros = data or {}
+            anio = filtros.get('anio', datetime.now().year)
+
+            resultado = self.querys.obtener_indicadores_mantenimiento(anio)
+
+            return self.tools.output(200, "Indicadores de mantenimiento obtenidos exitosamente.", resultado)
+
+        except Exception as e:
+            print(f"Error obteniendo indicadores de mantenimiento: {e}")
+            return self.tools.output(500, "Error obteniendo indicadores de mantenimiento.", {})
+
     # Función para crear un nuevo año
     def crear_anio(self, data=None):
         """

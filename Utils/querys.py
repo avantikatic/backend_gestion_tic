@@ -19,9 +19,14 @@ from Models.IntranetTipoTicketModel import IntranetTipoTicketModel
 from Models.IntranetPerfilesMacroprocesoModel import IntranetPerfilesMacroprocesoModel
 from Models.IntranetTipoNivelModel import IntranetTipoNivelModel
 from Models.IntranetObservacionesInformeGestionModel import IntranetObservacionesInformeGestionModel
+from Models.IntranetObservacionesMantenimientoModel import IntranetObservacionesMantenimientoModel
+from Models.IntranetCausasMantenimientoModel import IntranetCausasMantenimientoModel
+from Models.IntranetActivos import IntranetActivos
 from Models.IntranetCausasInformeGestionModel import IntranetCausasInformeGestion
 from Models.IntranetAniosInformeGestionModel import IntranetAniosInformeGestion
 from Models.IntranetOrigenEstrategicoModel import IntranetOrigenEstrategicoModel
+from Models.IntranetOrdenesTrabajo import IntranetOrdenesTrabajo
+from Models.IntranetActividadesOrdenesTrabajo import IntranetActividadesOrdenesTrabajo
 from Models.IntranetTiposServicioModel import IntranetTiposServicioModel
 from Models.IntranetProveedoresModel import IntranetProveedoresModel
 from Models.IntranetProductosServiciosModel import IntranetProductosServiciosModel
@@ -1971,6 +1976,49 @@ class Querys:
             print(f"Error guardando observación del mes: {e}")
             raise CustomException(f"Error guardando observación: {str(e)}")
 
+    # Query para obtener observación de mantenimiento de un mes
+    def obtener_observacion_mes_mantenimiento(self, anio, mes):
+        try:
+            observacion = self.db.query(IntranetObservacionesMantenimientoModel).filter(
+                IntranetObservacionesMantenimientoModel.anio == anio,
+                IntranetObservacionesMantenimientoModel.mes == mes,
+                IntranetObservacionesMantenimientoModel.estado == 1
+            ).first()
+            return observacion.to_dict() if observacion else None
+        except Exception as e:
+            print(f"Error obteniendo observación de mantenimiento: {e}")
+            return None
+
+    # Query para guardar o actualizar observación de mantenimiento de un mes
+    def guardar_observacion_mes_mantenimiento(self, anio, mes, observaciones):
+        try:
+            observacion_existente = self.db.query(IntranetObservacionesMantenimientoModel).filter(
+                IntranetObservacionesMantenimientoModel.anio == anio,
+                IntranetObservacionesMantenimientoModel.mes == mes,
+                IntranetObservacionesMantenimientoModel.estado == 1
+            ).first()
+
+            if observacion_existente:
+                observacion_existente.observaciones = observaciones
+                self.db.commit()
+                return observacion_existente.to_dict()
+            else:
+                nueva = IntranetObservacionesMantenimientoModel({
+                    'anio': anio,
+                    'mes': mes,
+                    'observaciones': observaciones,
+                    'estado': 1
+                })
+                self.db.add(nueva)
+                self.db.commit()
+                self.db.refresh(nueva)
+                return nueva.to_dict()
+
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error guardando observación de mantenimiento: {e}")
+            raise CustomException(f"Error guardando observación de mantenimiento: {str(e)}")
+
     # Query para obtener análisis de causas de un año
     def obtener_analisis_causas(self, anio, tipo_ticket=1):
         """
@@ -2061,6 +2109,75 @@ class Querys:
             self.db.rollback()
             print(f"Error guardando análisis de causas: {e}")
             raise CustomException(f"Error guardando análisis de causas: {str(e)}")
+
+    # Query para obtener análisis de causas de mantenimiento de un año
+    def obtener_analisis_causas_mantenimiento(self, anio):
+        try:
+            registros = self.db.query(IntranetCausasMantenimientoModel).filter(
+                IntranetCausasMantenimientoModel.anio == anio,
+                IntranetCausasMantenimientoModel.estado == 1
+            ).order_by(
+                IntranetCausasMantenimientoModel.mes.asc()
+            ).all()
+            return [r.to_dict() for r in registros]
+        except Exception as e:
+            print(f"Error obteniendo análisis de causas de mantenimiento: {e}")
+            return []
+
+    # Query para verificar si ya existe un análisis de mantenimiento para año+mes
+    def verificar_analisis_mantenimiento_existe(self, anio, mes):
+        try:
+            existe = self.db.query(IntranetCausasMantenimientoModel).filter(
+                IntranetCausasMantenimientoModel.anio == anio,
+                IntranetCausasMantenimientoModel.mes == mes,
+                IntranetCausasMantenimientoModel.estado == 1
+            ).first()
+            return existe is not None
+        except Exception as e:
+            print(f"Error verificando existencia de análisis de mantenimiento: {e}")
+            return False
+
+    # Query para guardar o actualizar análisis de causas de mantenimiento
+    def guardar_analisis_causas_mantenimiento(self, id_analisis, anio, mes, analisis, acciones, responsable, fecha_compromiso, seguimiento):
+        try:
+            if id_analisis:
+                registro = self.db.query(IntranetCausasMantenimientoModel).filter(
+                    IntranetCausasMantenimientoModel.id == id_analisis,
+                    IntranetCausasMantenimientoModel.estado == 1
+                ).first()
+
+                if not registro:
+                    raise CustomException("Análisis de mantenimiento no encontrado")
+
+                registro.analisis         = analisis
+                registro.acciones         = acciones
+                registro.responsable      = responsable
+                registro.fecha_compromiso = fecha_compromiso
+                registro.seguimiento      = seguimiento
+                self.db.commit()
+                return registro.to_dict()
+            else:
+                if self.verificar_analisis_mantenimiento_existe(anio, mes):
+                    raise CustomException("Ya existe un análisis para este mes y año de mantenimiento")
+
+                nuevo = IntranetCausasMantenimientoModel()
+                nuevo.anio             = anio
+                nuevo.mes              = mes
+                nuevo.analisis         = analisis
+                nuevo.acciones         = acciones
+                nuevo.responsable      = responsable
+                nuevo.fecha_compromiso = fecha_compromiso
+                nuevo.seguimiento      = seguimiento
+                nuevo.estado           = 1
+                self.db.add(nuevo)
+                self.db.commit()
+                self.db.refresh(nuevo)
+                return nuevo.to_dict()
+
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error guardando análisis de causas de mantenimiento: {e}")
+            raise CustomException(f"Error guardando análisis de mantenimiento: {str(e)}")
 
     # Query para obtener todos los años disponibles (activos) ordenados descendentemente
     def obtener_anios_disponibles(self):
@@ -4753,3 +4870,115 @@ class Querys:
             print(f"Error enviando notificación: {e}")
             traceback.print_exc()
             return False
+
+    # ── Indicador Mantenimiento Preventivo TIC ───────────────────────────────
+    def obtener_indicadores_mantenimiento(self, anio):
+        """
+        Indicador: Cumplimiento del programa de mantenimiento preventivo TIC.
+        Solo se evalúan los meses de Marzo (3) y Septiembre (9).
+
+        Para cada mes calcula:
+          - total_actividades   : actividades ligadas a OTs preventivas (tipo_mantenimiento=1)
+                                  cuya fecha_programacion_desde cae en ese mes/año.
+          - actividades_oportunas: subset de las anteriores cuyo created_at (fecha de
+                                  ejecución) cae DENTRO del rango [fecha_programacion_desde,
+                                  fecha_programacion_hasta] de la OT.
+          - porcentaje           : oportunas / total * 100
+          - porcentaje_acumulado : acumulado año sobre los dos meses evaluados
+        """
+        try:
+            MESES = [
+                {'numero': 3, 'nombre': 'Marzo'},
+                {'numero': 9, 'nombre': 'Septiembre'},
+            ]
+
+            porcentaje_meta = 90.0
+
+            OT  = IntranetOrdenesTrabajo
+            ACT = IntranetActividadesOrdenesTrabajo
+            A   = IntranetActivos
+
+            GRUPOS_ACTIVOS = ('13', '16')
+
+            indicadores = []
+            total_actividades_acum = 0
+            total_oportunas_acum   = 0
+
+            for mes_info in MESES:
+                mes_num = mes_info['numero']
+
+                # Filtro compartido: OTs preventivas del mes/año en grupos TIC
+                filtro_base = [
+                    OT.tipo_mantenimiento == 1,
+                    func.extract('year',  OT.fecha_programacion_desde) == anio,
+                    func.extract('month', OT.fecha_programacion_desde) == mes_num,
+                    A.grupo.in_(GRUPOS_ACTIVOS),
+                    A.retirado == 0,
+                ]
+
+                # ── Total de actividades a realizar ──────────────────────────
+                # Contamos OTs (no actividades): cada OT = 1 actividad de
+                # mantenimiento. Incluye las pendientes (estado_ot=1) y las
+                # completadas (estado_ot=3), ya que todas "deben realizarse".
+                total_q = (
+                    self.db.query(func.count(OT.id))
+                    .join(A, A.id == OT.activo_id)
+                    .filter(*filtro_base)
+                    .scalar()
+                ) or 0
+
+                # ── Actividades ejecutadas oportunamente ─────────────────────
+                # Contamos registros en actividades cuyo created_at cae dentro
+                # del rango programado de la OT (ejecutadas a tiempo).
+                oportunas_q = (
+                    self.db.query(func.count(ACT.id))
+                    .join(OT, ACT.orden_trabajo_id == OT.id)
+                    .join(A,  A.id == OT.activo_id)
+                    .filter(
+                        *filtro_base,
+                        cast(ACT.created_at, Date) >= OT.fecha_programacion_desde,
+                        cast(ACT.created_at, Date) <= OT.fecha_programacion_hasta,
+                    )
+                    .scalar()
+                ) or 0
+
+                total_actividades_acum += total_q
+                total_oportunas_acum   += oportunas_q
+
+                porcentaje = (
+                    round(oportunas_q / total_q * 100, 2) if total_q > 0 else 0
+                )
+                porcentaje_acumulado = (
+                    round(total_oportunas_acum / total_actividades_acum * 100, 2)
+                    if total_actividades_acum > 0 else 0
+                )
+
+                indicadores.append({
+                    'mes':                  mes_info['nombre'],
+                    'mes_numero':           mes_num,
+                    'total_actividades':    total_q,
+                    'actividades_oportunas': oportunas_q,
+                    'porcentaje':           f"{porcentaje}%",
+                    'porcentaje_acumulado': f"{porcentaje_acumulado}%",
+                    'porcentaje_meta':      porcentaje_meta,
+                })
+
+            porcentaje_global = (
+                round(total_oportunas_acum / total_actividades_acum * 100, 2)
+                if total_actividades_acum > 0 else 0
+            )
+
+            return {
+                'anio': anio,
+                'indicadores': indicadores,
+                'totales': {
+                    'total_actividades':    total_actividades_acum,
+                    'actividades_oportunas': total_oportunas_acum,
+                    'porcentaje_global':    f"{porcentaje_global}%",
+                    'porcentaje_meta':      porcentaje_meta,
+                },
+            }
+
+        except Exception as e:
+            print(f"Error obteniendo indicadores de mantenimiento: {e}")
+            raise CustomException(f"Error obteniendo indicadores de mantenimiento: {str(e)}")

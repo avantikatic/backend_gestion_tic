@@ -62,6 +62,46 @@ def obtener_tickets_periodo(request: Request, db: Session = Depends(get_db)):
     response = Indicadores(db).obtener_tickets_periodo(data)
     return response
 
+@indicadores_router.post('/obtener_analisis_causas_mantenimiento', tags=["INDICADORES"], response_model=dict)
+@http_decorator
+def obtener_analisis_causas_mantenimiento(request: Request, db: Session = Depends(get_db)):
+    """Obtiene los análisis de causas y acciones del indicador de mantenimiento preventivo TIC"""
+    data = getattr(request.state, "json_data", {})
+    response = Indicadores(db).obtener_analisis_causas_mantenimiento(data)
+    return response
+
+@indicadores_router.post('/guardar_analisis_causas_mantenimiento', tags=["INDICADORES"], response_model=dict)
+@http_decorator
+def guardar_analisis_causas_mantenimiento(request: Request, db: Session = Depends(get_db)):
+    """Guarda o actualiza un análisis de causas del indicador de mantenimiento preventivo TIC"""
+    data = getattr(request.state, "json_data", {})
+    response = Indicadores(db).guardar_analisis_causas_mantenimiento(data)
+    return response
+
+@indicadores_router.post('/obtener_observacion_mes_mantenimiento', tags=["INDICADORES"], response_model=dict)
+@http_decorator
+def obtener_observacion_mes_mantenimiento(request: Request, db: Session = Depends(get_db)):
+    """Obtiene la observación de un mes del indicador de mantenimiento preventivo TIC"""
+    data = getattr(request.state, "json_data", {})
+    response = Indicadores(db).obtener_observacion_mes_mantenimiento(data)
+    return response
+
+@indicadores_router.post('/guardar_observacion_mes_mantenimiento', tags=["INDICADORES"], response_model=dict)
+@http_decorator
+def guardar_observacion_mes_mantenimiento(request: Request, db: Session = Depends(get_db)):
+    """Guarda o actualiza la observación de un mes del indicador de mantenimiento preventivo TIC"""
+    data = getattr(request.state, "json_data", {})
+    response = Indicadores(db).guardar_observacion_mes_mantenimiento(data)
+    return response
+
+@indicadores_router.post('/obtener_indicadores_mantenimiento', tags=["INDICADORES"], response_model=dict)
+@http_decorator
+def obtener_indicadores_mantenimiento(request: Request, db: Session = Depends(get_db)):
+    """Obtiene el indicador de mantenimiento preventivo TIC (Marzo y Septiembre)"""
+    data = getattr(request.state, "json_data", {})
+    response = Indicadores(db).obtener_indicadores_mantenimiento(data)
+    return response
+
 @indicadores_router.post('/obtener_anios', tags=["INDICADORES"], response_model=dict)
 @http_decorator
 def obtener_anios(request: Request, db: Session = Depends(get_db)):
