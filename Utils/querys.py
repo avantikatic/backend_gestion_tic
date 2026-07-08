@@ -5387,3 +5387,381 @@ class Querys:
             d['tipo_bitacora'] = tipo_nombre
             resultado.append(d)
         return resultado
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # CCTV
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def _cctv_models(self):
+        from Models.IntranetCctvSedesModel              import IntranetCctvSedes
+        from Models.IntranetCctvCamarasModel            import IntranetCctvCamaras
+        from Models.IntranetCctvCargosModel             import IntranetCctvCargos
+        from Models.IntranetCctvRegistrosCambiosModel   import IntranetCctvRegistrosCambios
+        from Models.IntranetCctvRevisionesModel         import IntranetCctvRevisiones
+        from Models.IntranetCctvIncidentesModel         import IntranetCctvIncidentes
+        from Models.IntranetCctvEstadosCamaraModel      import IntranetCctvEstadosCamara
+        from Models.IntranetCctvMetodosBackupModel      import IntranetCctvMetodosBackup
+        from Models.IntranetCctvNivelesAccesoModel      import IntranetCctvNivelesAcceso
+        from Models.IntranetCctvSeveridadesModel        import IntranetCctvSeveridades
+        from Models.IntranetCctvEstadosIncidenteModel   import IntranetCctvEstadosIncidente
+        return {
+            'Sedes':             IntranetCctvSedes,
+            'Camaras':           IntranetCctvCamaras,
+            'Cargos':            IntranetCctvCargos,
+            'RegistrosCambios':  IntranetCctvRegistrosCambios,
+            'Revisiones':        IntranetCctvRevisiones,
+            'Incidentes':        IntranetCctvIncidentes,
+            'EstadosCamara':     IntranetCctvEstadosCamara,
+            'MetodosBackup':     IntranetCctvMetodosBackup,
+            'NivelesAcceso':     IntranetCctvNivelesAcceso,
+            'Severidades':       IntranetCctvSeveridades,
+            'EstadosIncidente':  IntranetCctvEstadosIncidente,
+        }
+
+    # ── Catálogos ──────────────────────────────────────────────────────────────
+
+    def cctv_obtener_catalogos(self):
+        m = self._cctv_models()
+        def _cat(model):
+            return [r.to_dict() for r in
+                    self.db.query(model).filter(model.activo == True).order_by(model.orden).all()]
+        return {
+            'estados_camara':    _cat(m['EstadosCamara']),
+            'metodos_backup':    _cat(m['MetodosBackup']),
+            'niveles_acceso':    _cat(m['NivelesAcceso']),
+            'severidades':       _cat(m['Severidades']),
+            'estados_incidente': _cat(m['EstadosIncidente']),
+        }
+
+    # ── Dashboard ──────────────────────────────────────────────────────────────
+
+    def cctv_dashboard(self):
+        m = self._cctv_models()
+        S = m['Sedes']
+        C = m['Camaras']
+
+        total_sedes   = self.db.query(S).filter(S.activo == True).count()
+        total_camaras = self.db.query(C).filter(C.activo == True).count()
+        dias_total    = self.db.query(func.sum(C.dias_almacenamiento)).filter(C.activo == True).scalar() or 0
+        total_cargos  = self.db.query(m['Cargos']).filter(m['Cargos'].activo == True).count()
+
+        sedes   = self.db.query(S).filter(S.activo == True).order_by(S.nombre).all()
+        por_sede = []
+        for sede in sedes:
+            camaras = self.db.query(C).filter(C.id_sede == sede.id, C.activo == True).all()
+            por_sede.append({
+                'id_sede':             sede.id,
+                'nombre':              sede.nombre,
+                'ubicacion_general':   sede.ubicacion_general,
+                'camaras':             len(camaras),
+                'dias_almacenamiento': sede.dias_almacenamiento_estimado,
+                'dias_backup':         sum(c.dias_retencion_backup or 0 for c in camaras),
+            })
+
+        return {
+            'totales': {
+                'sedes':               total_sedes,
+                'camaras':             total_camaras,
+                'dias_almacenamiento': int(dias_total),
+                'cargos_autorizados':  total_cargos,
+            },
+            'por_sede': por_sede,
+        }
+
+    # ── Sedes ──────────────────────────────────────────────────────────────────
+
+    def cctv_listar_sedes(self):
+        m = self._cctv_models()
+        return [r.to_dict() for r in
+                self.db.query(m['Sedes']).filter(m['Sedes'].activo == True)
+                .order_by(m['Sedes'].nombre).all()]
+
+    def cctv_crear_sede(self, data: dict) -> dict:
+        m = self._cctv_models()
+        sede = m['Sedes'](data)
+        sede.fecha_creacion      = self._get_fecha_colombia()
+        sede.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(sede)
+        self.db.commit()
+        self.db.refresh(sede)
+        return sede.to_dict()
+
+    def cctv_actualizar_sede(self, id_sede: int, data: dict):
+        m    = self._cctv_models()
+        sede = self.db.query(m['Sedes']).filter(m['Sedes'].id == id_sede, m['Sedes'].activo == True).first()
+        if not sede:
+            return None
+        campos = ['nombre', 'ubicacion_general', 'responsable_operativo',
+                  'sistema_grabacion', 'dias_almacenamiento_estimado', 'observaciones',
+                  'usuario_actualizacion']
+        for campo in campos:
+            if campo in data:
+                setattr(sede, campo, data[campo])
+        sede.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.commit()
+        self.db.refresh(sede)
+        return sede.to_dict()
+
+    def cctv_eliminar_sede(self, id_sede: int):
+        m    = self._cctv_models()
+        sede = self.db.query(m['Sedes']).filter(m['Sedes'].id == id_sede).first()
+        if sede:
+            sede.activo              = False
+            sede.fecha_actualizacion = self._get_fecha_colombia()
+            camaras = self.db.query(m['Camaras']).filter(m['Camaras'].id_sede == id_sede).all()
+            for c in camaras:
+                c.activo             = False
+                c.fecha_actualizacion = self._get_fecha_colombia()
+            self.db.commit()
+
+    # ── Cámaras ────────────────────────────────────────────────────────────────
+
+    def _enrich_camara(self, camara, m):
+        d   = camara.to_dict()
+        s   = self.db.query(m['Sedes']).filter(m['Sedes'].id == camara.id_sede).first()
+        ec  = self.db.query(m['EstadosCamara']).filter(m['EstadosCamara'].id == camara.id_estado_camara).first()
+        mb  = self.db.query(m['MetodosBackup']).filter(m['MetodosBackup'].id == camara.id_metodo_backup).first()
+        d['nombre_sede']         = s.nombre   if s  else ''
+        d['estado']              = ec.nombre  if ec else ''
+        d['estado_valor']        = ec.valor   if ec else ''
+        d['metodo_backup']       = mb.nombre  if mb else ''
+        d['metodo_backup_valor'] = mb.valor   if mb else ''
+        return d
+
+    def cctv_listar_camaras(self, filtros: dict = {}):
+        m = self._cctv_models()
+        C = m['Camaras']
+        S = m['Sedes']
+
+        q = (self.db.query(C)
+             .join(S, C.id_sede == S.id)
+             .filter(C.activo == True))
+
+        if filtros.get('id_sede'):
+            q = q.filter(C.id_sede == filtros['id_sede'])
+        if filtros.get('id_estado_camara'):
+            q = q.filter(C.id_estado_camara == filtros['id_estado_camara'])
+        if filtros.get('query'):
+            term = f"%{filtros['query'].strip().lower()}%"
+            q = q.filter(or_(
+                C.codigo_equipo_grabacion.ilike(term),
+                C.ubicacion_fisica.ilike(term),
+                S.nombre.ilike(term),
+            ))
+
+        q = q.order_by(S.nombre, C.codigo_equipo_grabacion)
+        return [self._enrich_camara(c, m) for c in q.all()]
+
+    def cctv_crear_camara(self, data: dict) -> dict:
+        m      = self._cctv_models()
+        camara = m['Camaras'](data)
+        camara.fecha_creacion      = self._get_fecha_colombia()
+        camara.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(camara)
+        self.db.commit()
+        self.db.refresh(camara)
+        return self._enrich_camara(camara, m)
+
+    def cctv_actualizar_camara(self, id_camara: int, data: dict):
+        m      = self._cctv_models()
+        camara = self.db.query(m['Camaras']).filter(m['Camaras'].id == id_camara, m['Camaras'].activo == True).first()
+        if not camara:
+            return None
+        campos = ['id_sede', 'codigo_equipo_grabacion', 'ubicacion_fisica',
+                  'id_estado_camara', 'dias_almacenamiento', 'id_metodo_backup',
+                  'dias_retencion_backup', 'fecha_instalacion_actualizacion',
+                  'observaciones', 'usuario_actualizacion']
+        for campo in campos:
+            if campo in data:
+                setattr(camara, campo, data[campo])
+        camara.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.commit()
+        self.db.refresh(camara)
+        return self._enrich_camara(camara, m)
+
+    def cctv_eliminar_camara(self, id_camara: int):
+        m      = self._cctv_models()
+        camara = self.db.query(m['Camaras']).filter(m['Camaras'].id == id_camara).first()
+        if camara:
+            camara.activo             = False
+            camara.fecha_actualizacion = self._get_fecha_colombia()
+            self.db.commit()
+
+    # ── Cargos ─────────────────────────────────────────────────────────────────
+
+    def _enrich_cargo(self, cargo, m):
+        d  = cargo.to_dict()
+        na = self.db.query(m['NivelesAcceso']).filter(m['NivelesAcceso'].id == cargo.id_nivel_acceso).first()
+        d['nivel_acceso']       = na.nombre if na else ''
+        d['nivel_acceso_valor'] = na.valor  if na else ''
+        return d
+
+    def cctv_listar_cargos(self):
+        m  = self._cctv_models()
+        CR = m['Cargos']
+        NA = m['NivelesAcceso']
+
+        rows = (self.db.query(CR, NA.nombre, NA.valor)
+                .join(NA, CR.id_nivel_acceso == NA.id)
+                .filter(CR.activo == True)
+                .order_by(CR.nombre).all())
+
+        resultado = []
+        for cargo, na_nombre, na_valor in rows:
+            d = cargo.to_dict()
+            d['nivel_acceso']       = na_nombre
+            d['nivel_acceso_valor'] = na_valor
+            resultado.append(d)
+        return resultado
+
+    def cctv_crear_cargo(self, data: dict) -> dict:
+        m     = self._cctv_models()
+        cargo = m['Cargos'](data)
+        cargo.fecha_creacion      = self._get_fecha_colombia()
+        cargo.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(cargo)
+        self.db.commit()
+        self.db.refresh(cargo)
+        return self._enrich_cargo(cargo, m)
+
+    def cctv_actualizar_cargo(self, id_cargo: int, data: dict):
+        import json
+        m     = self._cctv_models()
+        cargo = self.db.query(m['Cargos']).filter(m['Cargos'].id == id_cargo, m['Cargos'].activo == True).first()
+        if not cargo:
+            return None
+        campos_simples = ['nombre', 'id_nivel_acceso', 'justificacion_acceso',
+                          'puede_ver_camaras', 'puede_editar_inventario',
+                          'puede_administrar_configuracion', 'usuario_actualizacion']
+        for campo in campos_simples:
+            if campo in data:
+                setattr(cargo, campo, data[campo])
+        if 'ids_sedes' in data:
+            ids = data['ids_sedes'] or []
+            cargo.ids_sedes = json.dumps([int(i) for i in ids])
+        cargo.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.commit()
+        self.db.refresh(cargo)
+        return self._enrich_cargo(cargo, m)
+
+    def cctv_eliminar_cargo(self, id_cargo: int):
+        m     = self._cctv_models()
+        cargo = self.db.query(m['Cargos']).filter(m['Cargos'].id == id_cargo).first()
+        if cargo:
+            cargo.activo             = False
+            cargo.fecha_actualizacion = self._get_fecha_colombia()
+            self.db.commit()
+
+    # ── Registros de cambios ───────────────────────────────────────────────────
+
+    def cctv_listar_cambios(self):
+        m  = self._cctv_models()
+        RC = m['RegistrosCambios']
+        S  = m['Sedes']
+        C  = m['Camaras']
+
+        rows = (self.db.query(RC, S.nombre, C.codigo_equipo_grabacion)
+                .outerjoin(S, RC.id_sede   == S.id)
+                .outerjoin(C, RC.id_camara == C.id)
+                .filter(RC.activo == True)
+                .order_by(RC.fecha_creacion.desc())
+                .limit(100).all())
+
+        resultado = []
+        for cambio, nombre_sede, codigo_camara in rows:
+            d = cambio.to_dict()
+            d['nombre_sede']   = nombre_sede
+            d['codigo_camara'] = codigo_camara
+            resultado.append(d)
+        return resultado
+
+    def cctv_crear_cambio(self, data: dict) -> dict:
+        m      = self._cctv_models()
+        cambio = m['RegistrosCambios'](data)
+        cambio.fecha_creacion      = self._get_fecha_colombia()
+        cambio.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(cambio)
+        self.db.commit()
+        self.db.refresh(cambio)
+        d = cambio.to_dict()
+        if cambio.id_sede:
+            sede = self.db.query(m['Sedes']).filter(m['Sedes'].id == cambio.id_sede).first()
+            d['nombre_sede'] = sede.nombre if sede else None
+        return d
+
+    # ── Revisiones ─────────────────────────────────────────────────────────────
+
+    def cctv_listar_revisiones(self):
+        m = self._cctv_models()
+        return [r.to_dict() for r in
+                self.db.query(m['Revisiones']).filter(m['Revisiones'].activo == True)
+                .order_by(m['Revisiones'].fecha_creacion.desc()).limit(100).all()]
+
+    def cctv_crear_revision(self, data: dict) -> dict:
+        m        = self._cctv_models()
+        revision = m['Revisiones'](data)
+        revision.fecha_creacion      = self._get_fecha_colombia()
+        revision.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(revision)
+        self.db.commit()
+        self.db.refresh(revision)
+        return revision.to_dict()
+
+    # ── Incidentes ─────────────────────────────────────────────────────────────
+
+    def _enrich_incidente(self, inc, m):
+        d  = inc.to_dict()
+        sv = self.db.query(m['Severidades']).filter(m['Severidades'].id == inc.id_severidad).first()
+        ei = self.db.query(m['EstadosIncidente']).filter(m['EstadosIncidente'].id == inc.id_estado_incidente).first()
+        d['severidad']       = sv.nombre if sv else ''
+        d['severidad_valor'] = sv.valor  if sv else ''
+        d['estado']          = ei.nombre if ei else ''
+        d['estado_valor']    = ei.valor  if ei else ''
+        return d
+
+    def cctv_listar_incidentes(self):
+        m  = self._cctv_models()
+        I  = m['Incidentes']
+        S  = m['Sedes']
+        C  = m['Camaras']
+
+        rows = (self.db.query(I, S.nombre, C.codigo_equipo_grabacion)
+                .outerjoin(S, I.id_sede   == S.id)
+                .outerjoin(C, I.id_camara == C.id)
+                .filter(I.activo == True)
+                .order_by(I.fecha_creacion.desc())
+                .limit(100).all())
+
+        resultado = []
+        for inc, nombre_sede, codigo_camara in rows:
+            d = self._enrich_incidente(inc, m)
+            d['nombre_sede']   = nombre_sede
+            d['codigo_camara'] = codigo_camara
+            resultado.append(d)
+        return resultado
+
+    def cctv_crear_incidente(self, data: dict) -> dict:
+        m         = self._cctv_models()
+        incidente = m['Incidentes'](data)
+        incidente.fecha_creacion      = self._get_fecha_colombia()
+        incidente.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(incidente)
+        self.db.commit()
+        self.db.refresh(incidente)
+        return self._enrich_incidente(incidente, m)
+
+    def cctv_actualizar_incidente(self, id_incidente: int, data: dict):
+        m         = self._cctv_models()
+        incidente = self.db.query(m['Incidentes']).filter(
+            m['Incidentes'].id == id_incidente, m['Incidentes'].activo == True).first()
+        if not incidente:
+            return None
+        campos = ['id_estado_incidente', 'id_severidad', 'accion_correctiva', 'titulo',
+                  'descripcion', 'usuario_actualizacion']
+        for campo in campos:
+            if campo in data:
+                setattr(incidente, campo, data[campo])
+        incidente.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.commit()
+        self.db.refresh(incidente)
+        return self._enrich_incidente(incidente, m)

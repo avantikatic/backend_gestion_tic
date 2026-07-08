@@ -10,6 +10,7 @@ from Router.Indicadores import indicadores_router
 from Router.Licencias import licencias_router
 from Router.GestionContinuidad import gestion_continuidad_router
 from Router.Contingencia import contingencia_router
+from Router.Cctv import cctv_router
 from pathlib import Path
 
 route = Path.cwd()
@@ -33,6 +34,7 @@ app.include_router(indicadores_router, prefix="/indicadores")
 app.include_router(licencias_router, prefix="/licencias")
 app.include_router(gestion_continuidad_router, prefix="/gestion-continuidad")
 app.include_router(contingencia_router, prefix="/contingencia")
+app.include_router(cctv_router, prefix="/cctv")
 
 BASE.metadata.create_all(bind=engine)
 
