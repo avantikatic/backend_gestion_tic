@@ -9,6 +9,7 @@ from Router.Dashboard import dashboard_router
 from Router.Indicadores import indicadores_router
 from Router.Licencias import licencias_router
 from Router.GestionContinuidad import gestion_continuidad_router
+from Router.Contingencia import contingencia_router
 from pathlib import Path
 
 route = Path.cwd()
@@ -19,7 +20,7 @@ app.version = "0.0.1"
 app.mount("/Uploads", StaticFiles(directory=f"{route}/Uploads"), name="Uploads")
 app.add_middleware(JSONMiddleware)
 app.add_middleware(
-    #CORSMiddleware,allow_origins=["*"],  # Permitir todos los orígenes; para producción, especifica los orígenes permitidos.
+    # CORSMiddleware,allow_origins=["*"],  # Permitir todos los orígenes; para producción, especifica los orígenes permitidos.
     CORSMiddleware,allow_origins=["https://gestiontic.avantika.com.co"],
     allow_credentials=True,
     allow_methods=["*"],  # Permitir todos los métodos; puedes especificar los métodos permitidos.
@@ -31,6 +32,7 @@ app.include_router(dashboard_router, prefix="/dashboard")
 app.include_router(indicadores_router, prefix="/indicadores")
 app.include_router(licencias_router, prefix="/licencias")
 app.include_router(gestion_continuidad_router, prefix="/gestion-continuidad")
+app.include_router(contingencia_router, prefix="/contingencia")
 
 BASE.metadata.create_all(bind=engine)
 
