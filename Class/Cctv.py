@@ -79,8 +79,8 @@ class Cctv:
 
     def crear_camara(self, data: dict):
         try:
-            if not data.get('id_sede') or not data.get('codigo_equipo_grabacion') or not data.get('ubicacion_fisica'):
-                return self.tools.output(400, "id_sede, codigo_equipo_grabacion y ubicacion_fisica son requeridos.", {})
+            if not data.get('id_sede') or not data.get('ubicacion_fisica'):
+                return self.tools.output(400, "id_sede y ubicacion_fisica son requeridos.", {})
             camara = self.querys.cctv_crear_camara(data)
             return self.tools.output(201, "Cámara creada.", camara)
         except Exception as e:

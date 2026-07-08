@@ -5492,8 +5492,8 @@ class Querys:
         if not sede:
             return None
         campos = ['nombre', 'ubicacion_general', 'responsable_operativo',
-                  'sistema_grabacion', 'dias_almacenamiento_estimado', 'observaciones',
-                  'usuario_actualizacion']
+                  'sistema_grabacion', 'dias_almacenamiento_estimado', 'codigo_activo',
+                  'observaciones', 'usuario_actualizacion']
         for campo in campos:
             if campo in data:
                 setattr(sede, campo, data[campo])
@@ -5553,11 +5553,25 @@ class Querys:
         return [self._enrich_camara(c, m) for c in q.all()]
 
     def cctv_crear_camara(self, data: dict) -> dict:
-        m      = self._cctv_models()
+        import re
+        m = self._cctv_models()
+
+        # Determinar prefijo desde el sistema de grabacion de la sede
+        sede        = self.db.query(m['Sedes']).filter(m['Sedes'].id == data.get('id_sede')).first()
+        sistema_raw = (sede.sistema_grabacion if sede else '') or ''
+        palabras    = re.findall(r'[A-Za-z]+', sistema_raw)
+        prefijo     = palabras[0].upper() if palabras else 'CAM'
+
+        # Insertar con codigo temporal, hacer flush para obtener el ID
         camara = m['Camaras'](data)
-        camara.fecha_creacion      = self._get_fecha_colombia()
-        camara.fecha_actualizacion = self._get_fecha_colombia()
+        camara.codigo_equipo_grabacion = 'TEMP'
+        camara.fecha_creacion          = self._get_fecha_colombia()
+        camara.fecha_actualizacion     = self._get_fecha_colombia()
         self.db.add(camara)
+        self.db.flush()
+
+        # Asignar el codigo real con el ID autogenerado
+        camara.codigo_equipo_grabacion = f"{prefijo}-CAM-{camara.id}"
         self.db.commit()
         self.db.refresh(camara)
         return self._enrich_camara(camara, m)
