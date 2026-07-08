@@ -4982,3 +4982,408 @@ class Querys:
         except Exception as e:
             print(f"Error obteniendo indicadores de mantenimiento: {e}")
             raise CustomException(f"Error obteniendo indicadores de mantenimiento: {str(e)}")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CONTINGENCIA
+    # ══════════════════════════════════════════════════════════════════════════
+
+    # Importaciones diferidas para evitar circularidad al inicio del módulo
+    def _cont_models(self):
+        from Models.IntranetContingenciaTiposEventoModel          import IntranetContingenciaTiposEvento
+        from Models.IntranetContingenciaPrioridadesModel          import IntranetContingenciaPrioridades
+        from Models.IntranetContingenciaEstadosEventoModel        import IntranetContingenciaEstadosEvento
+        from Models.IntranetContingenciaEstadosAccionModel        import IntranetContingenciaEstadosAccion
+        from Models.IntranetContingenciaEstadosDocumentoModel     import IntranetContingenciaEstadosDocumento
+        from Models.IntranetContingenciaTiposBitacoraModel        import IntranetContingenciaTiposBitacora
+        from Models.IntranetContingenciaResultadosRecuperacionModel import IntranetContingenciaResultadosRecuperacion
+        from Models.IntranetContingenciaEventosModel              import IntranetContingenciaEventos
+        from Models.IntranetContingenciaAccionesModel             import IntranetContingenciaAcciones
+        from Models.IntranetContingenciaDocumentosModel           import IntranetContingenciaDocumentos
+        from Models.IntranetContingenciaBitacorasModel            import IntranetContingenciaBitacoras
+        from Models.IntranetContingenciaRecuperacionModel         import IntranetContingenciaRecuperacion
+        return {
+            'TiposEvento':            IntranetContingenciaTiposEvento,
+            'Prioridades':            IntranetContingenciaPrioridades,
+            'EstadosEvento':          IntranetContingenciaEstadosEvento,
+            'EstadosAccion':          IntranetContingenciaEstadosAccion,
+            'EstadosDocumento':       IntranetContingenciaEstadosDocumento,
+            'TiposBitacora':          IntranetContingenciaTiposBitacora,
+            'ResultadosRecuperacion': IntranetContingenciaResultadosRecuperacion,
+            'Eventos':                IntranetContingenciaEventos,
+            'Acciones':               IntranetContingenciaAcciones,
+            'Documentos':             IntranetContingenciaDocumentos,
+            'Bitacoras':              IntranetContingenciaBitacoras,
+            'Recuperacion':           IntranetContingenciaRecuperacion,
+        }
+
+    # ── Catálogos ──────────────────────────────────────────────────────────────
+
+    def cont_obtener_catalogos(self):
+        m = self._cont_models()
+        def _cat(model):
+            return [r.to_dict() for r in
+                    self.db.query(model).filter(model.activo == True).order_by(model.orden).all()]
+        return {
+            'tipos_evento':             _cat(m['TiposEvento']),
+            'prioridades':              _cat(m['Prioridades']),
+            'estados_evento':           _cat(m['EstadosEvento']),
+            'estados_accion':           _cat(m['EstadosAccion']),
+            'estados_documento':        _cat(m['EstadosDocumento']),
+            'tipos_bitacora':           _cat(m['TiposBitacora']),
+            'resultados_recuperacion':  _cat(m['ResultadosRecuperacion']),
+        }
+
+    def cont_id_tipo_bitacora(self, nombre: str) -> int:
+        """Devuelve el id del tipo de bitácora por nombre (para uso interno)."""
+        m = self._cont_models()
+        row = self.db.query(m['TiposBitacora']).filter(
+            m['TiposBitacora'].nombre == nombre,
+            m['TiposBitacora'].activo == True,
+        ).first()
+        return row.id if row else 1
+
+    # ── Contadores dashboard ───────────────────────────────────────────────────
+
+    def cont_obtener_contadores(self):
+        m = self._cont_models()
+        E = m['Eventos']
+        A = m['Acciones']
+        D = m['Documentos']
+        B = m['Bitacoras']
+
+        # Buscamos el id del estado "Cerrado" dinámicamente
+        cerrado = self.db.query(m['EstadosEvento']).filter(
+            m['EstadosEvento'].nombre == 'Cerrado',
+            m['EstadosEvento'].activo == True,
+        ).first()
+        completada = self.db.query(m['EstadosAccion']).filter(
+            m['EstadosAccion'].nombre == 'Completada',
+            m['EstadosAccion'].activo == True,
+        ).first()
+
+        total_eventos     = self.db.query(E).filter(E.activo == True).count()
+        eventos_abiertos  = self.db.query(E).filter(
+            E.activo == True,
+            E.id_estado_evento != cerrado.id if cerrado else True,
+        ).count()
+        acciones_total     = self.db.query(A).filter(A.activo == True).count()
+        acciones_completadas = self.db.query(A).filter(
+            A.activo == True,
+            A.id_estado_accion == completada.id if completada else -1,
+        ).count()
+        total_documentos  = self.db.query(D).filter(D.activo == True).count()
+        total_bitacoras   = self.db.query(B).filter(B.activo == True).count()
+
+        return {
+            'total_eventos':          total_eventos,
+            'eventos_abiertos':       eventos_abiertos,
+            'acciones_total':         acciones_total,
+            'acciones_completadas':   acciones_completadas,
+            'total_documentos':       total_documentos,
+            'total_bitacoras':        total_bitacoras,
+        }
+
+    # ── Eventos ────────────────────────────────────────────────────────────────
+
+    def cont_contar_eventos_anio(self) -> int:
+        m = self._cont_models()
+        anio = self._get_fecha_colombia().year
+        return self.db.query(m['Eventos']).filter(
+            func.year(m['Eventos'].fecha_creacion) == anio
+        ).count()
+
+    def cont_listar_eventos(self, filtros: dict):
+        m = self._cont_models()
+        E  = m['Eventos']
+        TE = m['TiposEvento']
+        PR = m['Prioridades']
+        EE = m['EstadosEvento']
+
+        q = (self.db.query(E, TE.nombre, PR.nombre, EE.nombre)
+             .join(TE, E.id_tipo_evento   == TE.id)
+             .join(PR, E.id_prioridad     == PR.id)
+             .join(EE, E.id_estado_evento == EE.id)
+             .filter(E.activo == True))
+
+        if filtros.get('id_tipo_evento'):
+            q = q.filter(E.id_tipo_evento == filtros['id_tipo_evento'])
+        if filtros.get('id_estado_evento'):
+            q = q.filter(E.id_estado_evento == filtros['id_estado_evento'])
+        if filtros.get('query'):
+            term = f"%{filtros['query'].strip().lower()}%"
+            q = q.filter(or_(
+                E.codigo.ilike(term),
+                E.titulo.ilike(term),
+                E.area.ilike(term),
+                E.responsable.ilike(term),
+            ))
+
+        q = q.order_by(E.fecha_creacion.desc())
+        rows = q.all()
+
+        resultado = []
+        for evento, tipo_nombre, prioridad_nombre, estado_nombre in rows:
+            d = evento.to_dict()
+            d['tipo_evento']  = tipo_nombre
+            d['prioridad']    = prioridad_nombre
+            d['estado_evento'] = estado_nombre
+            resultado.append(d)
+        return resultado
+
+    def cont_crear_evento(self, data: dict) -> dict:
+        m = self._cont_models()
+        evento = m['Eventos'](data)
+        evento.fecha_creacion      = self._get_fecha_colombia()
+        evento.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(evento)
+        self.db.commit()
+        self.db.refresh(evento)
+        return evento.to_dict()
+
+    def cont_obtener_evento(self, id_evento: int):
+        m  = self._cont_models()
+        E  = m['Eventos']
+        TE = m['TiposEvento']
+        PR = m['Prioridades']
+        EE = m['EstadosEvento']
+
+        row = (self.db.query(E, TE.nombre, PR.nombre, EE.nombre)
+               .join(TE, E.id_tipo_evento   == TE.id)
+               .join(PR, E.id_prioridad     == PR.id)
+               .join(EE, E.id_estado_evento == EE.id)
+               .filter(E.id == id_evento, E.activo == True)
+               .first())
+
+        if not row:
+            return None
+        evento, tipo_nombre, prioridad_nombre, estado_nombre = row
+        d = evento.to_dict()
+        d['tipo_evento']   = tipo_nombre
+        d['prioridad']     = prioridad_nombre
+        d['estado_evento'] = estado_nombre
+        return d
+
+    def cont_actualizar_evento(self, id_evento: int, data: dict):
+        m = self._cont_models()
+        evento = self.db.query(m['Eventos']).filter(
+            m['Eventos'].id == id_evento, m['Eventos'].activo == True
+        ).first()
+        if not evento:
+            return None
+
+        campos = ['id_tipo_evento', 'id_prioridad', 'id_estado_evento', 'titulo',
+                  'area', 'responsable', 'fecha_inicio', 'rto_objetivo', 'rpo_objetivo',
+                  'impacto', 'causa', 'usuario_actualizacion']
+        for campo in campos:
+            if campo in data:
+                setattr(evento, campo, data[campo])
+        evento.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.commit()
+        self.db.refresh(evento)
+        return evento.to_dict()
+
+    def cont_eliminar_evento(self, id_evento: int):
+        m = self._cont_models()
+        now = self._get_fecha_colombia()
+
+        for model in [m['Acciones'], m['Documentos'], m['Bitacoras']]:
+            (self.db.query(model)
+             .filter(model.id_evento == id_evento)
+             .update({'activo': False}, synchronize_session=False))
+
+        rec = self.db.query(m['Recuperacion']).filter(
+            m['Recuperacion'].id_evento == id_evento
+        ).first()
+        if rec:
+            rec.activo = False
+
+        evento = self.db.query(m['Eventos']).filter(m['Eventos'].id == id_evento).first()
+        if evento:
+            evento.activo             = False
+            evento.fecha_actualizacion = now
+        self.db.commit()
+
+    # ── Acciones ───────────────────────────────────────────────────────────────
+
+    def cont_contar_acciones_anio(self) -> int:
+        m = self._cont_models()
+        anio = self._get_fecha_colombia().year
+        return self.db.query(m['Acciones']).filter(
+            func.year(m['Acciones'].fecha_creacion) == anio
+        ).count()
+
+    def cont_crear_accion(self, data: dict) -> dict:
+        m = self._cont_models()
+        accion = m['Acciones'](data)
+        accion.fecha_creacion      = self._get_fecha_colombia()
+        accion.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(accion)
+        self.db.commit()
+        self.db.refresh(accion)
+        return accion.to_dict()
+
+    def cont_listar_acciones(self, id_evento: int):
+        m  = self._cont_models()
+        A  = m['Acciones']
+        EA = m['EstadosAccion']
+
+        rows = (self.db.query(A, EA.nombre)
+                .join(EA, A.id_estado_accion == EA.id)
+                .filter(A.id_evento == id_evento, A.activo == True)
+                .order_by(A.fecha_creacion.desc())
+                .all())
+
+        resultado = []
+        for accion, estado_nombre in rows:
+            d = accion.to_dict()
+            d['estado_accion'] = estado_nombre
+            resultado.append(d)
+        return resultado
+
+    def cont_actualizar_accion(self, id_accion: int, data: dict):
+        m = self._cont_models()
+        accion = self.db.query(m['Acciones']).filter(
+            m['Acciones'].id == id_accion, m['Acciones'].activo == True
+        ).first()
+        if not accion:
+            return None
+
+        campos = ['id_estado_accion', 'titulo', 'responsable', 'fecha_compromiso',
+                  'evidencia', 'control_asociado', 'usuario_actualizacion']
+        for campo in campos:
+            if campo in data:
+                setattr(accion, campo, data[campo])
+        accion.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.commit()
+        self.db.refresh(accion)
+        return accion.to_dict()
+
+    def cont_eliminar_accion(self, id_accion: int):
+        m = self._cont_models()
+        accion = self.db.query(m['Acciones']).filter(m['Acciones'].id == id_accion).first()
+        if accion:
+            accion.activo             = False
+            accion.fecha_actualizacion = self._get_fecha_colombia()
+            self.db.commit()
+
+    # ── Recuperación ───────────────────────────────────────────────────────────
+
+    def cont_upsert_recuperacion(self, data: dict) -> dict:
+        m = self._cont_models()
+        rec = self.db.query(m['Recuperacion']).filter(
+            m['Recuperacion'].id_evento == data['id_evento']
+        ).first()
+
+        campos = ['id_resultado_recuperacion', 'tiempo_real', 'datos_recuperados',
+                  'observaciones', 'servicio_alterno', 'integridad_documental',
+                  'informe_final', 'lecciones_aprendidas']
+
+        if rec:
+            for campo in campos:
+                if campo in data:
+                    setattr(rec, campo, data[campo])
+            if 'usuario_actualizacion' in data:
+                rec.usuario_actualizacion = data['usuario_actualizacion']
+            rec.fecha_actualizacion = self._get_fecha_colombia()
+            rec.activo = True
+        else:
+            rec = m['Recuperacion'](data)
+            rec.fecha_creacion      = self._get_fecha_colombia()
+            rec.fecha_actualizacion = self._get_fecha_colombia()
+            self.db.add(rec)
+
+        self.db.commit()
+        self.db.refresh(rec)
+        return rec.to_dict()
+
+    def cont_obtener_recuperacion(self, id_evento: int):
+        m = self._cont_models()
+        rec = self.db.query(m['Recuperacion']).filter(
+            m['Recuperacion'].id_evento == id_evento,
+            m['Recuperacion'].activo == True,
+        ).first()
+        return rec.to_dict() if rec else None
+
+    # ── Documentos ─────────────────────────────────────────────────────────────
+
+    def cont_contar_documentos_anio(self) -> int:
+        m = self._cont_models()
+        anio = self._get_fecha_colombia().year
+        return self.db.query(m['Documentos']).filter(
+            func.year(m['Documentos'].fecha_creacion) == anio
+        ).count()
+
+    def cont_crear_documento(self, data: dict) -> dict:
+        m = self._cont_models()
+        doc = m['Documentos'](data)
+        doc.fecha_creacion      = self._get_fecha_colombia()
+        doc.fecha_actualizacion = self._get_fecha_colombia()
+        self.db.add(doc)
+        self.db.commit()
+        self.db.refresh(doc)
+        return doc.to_dict()
+
+    def cont_listar_documentos(self, id_evento: int):
+        m  = self._cont_models()
+        D  = m['Documentos']
+        ED = m['EstadosDocumento']
+
+        rows = (self.db.query(D, ED.nombre)
+                .join(ED, D.id_estado_documento == ED.id)
+                .filter(D.id_evento == id_evento, D.activo == True)
+                .order_by(D.fecha_creacion.desc())
+                .all())
+
+        resultado = []
+        for doc, estado_nombre in rows:
+            d = doc.to_dict()
+            d['estado_documento'] = estado_nombre
+            resultado.append(d)
+        return resultado
+
+    def cont_eliminar_documento(self, id_documento: int):
+        m = self._cont_models()
+        doc = self.db.query(m['Documentos']).filter(m['Documentos'].id == id_documento).first()
+        if doc:
+            doc.activo             = False
+            doc.fecha_actualizacion = self._get_fecha_colombia()
+            self.db.commit()
+
+    # ── Bitácoras ──────────────────────────────────────────────────────────────
+
+    def cont_contar_bitacoras_evento(self, id_evento: int) -> int:
+        m = self._cont_models()
+        anio = self._get_fecha_colombia().year
+        return self.db.query(m['Bitacoras']).filter(
+            m['Bitacoras'].id_evento == id_evento,
+            func.year(m['Bitacoras'].fecha_creacion) == anio,
+        ).count()
+
+    def cont_crear_bitacora(self, data: dict) -> dict:
+        m = self._cont_models()
+        if not data.get('hora_registro'):
+            data['hora_registro'] = self._get_fecha_colombia().strftime('%d/%m/%Y %H:%M')
+        bitacora = m['Bitacoras'](data)
+        bitacora.fecha_creacion = self._get_fecha_colombia()
+        self.db.add(bitacora)
+        self.db.commit()
+        self.db.refresh(bitacora)
+        return bitacora.to_dict()
+
+    def cont_listar_bitacoras(self, id_evento: int):
+        m  = self._cont_models()
+        B  = m['Bitacoras']
+        TB = m['TiposBitacora']
+
+        rows = (self.db.query(B, TB.nombre)
+                .join(TB, B.id_tipo_bitacora == TB.id)
+                .filter(B.id_evento == id_evento, B.activo == True)
+                .order_by(B.fecha_creacion.desc())
+                .all())
+
+        resultado = []
+        for bitacora, tipo_nombre in rows:
+            d = bitacora.to_dict()
+            d['tipo_bitacora'] = tipo_nombre
+            resultado.append(d)
+        return resultado
