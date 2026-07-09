@@ -5678,26 +5678,31 @@ class Querys:
 
     # ── Registros de cambios ───────────────────────────────────────────────────
 
-    def cctv_listar_cambios(self):
+    def cctv_listar_cambios(self, filtros: dict = {}):
         m  = self._cctv_models()
         RC = m['RegistrosCambios']
         S  = m['Sedes']
         C  = m['Camaras']
 
-        rows = (self.db.query(RC, S.nombre, C.codigo_equipo_grabacion)
-                .outerjoin(S, RC.id_sede   == S.id)
-                .outerjoin(C, RC.id_camara == C.id)
-                .filter(RC.activo == True)
-                .order_by(RC.fecha_creacion.desc())
-                .limit(100).all())
+        page      = max(1, int(filtros.get('page') or 1))
+        page_size = max(1, int(filtros.get('page_size') or 15))
 
-        resultado = []
+        q = (self.db.query(RC, S.nombre, C.codigo_equipo_grabacion)
+             .outerjoin(S, RC.id_sede   == S.id)
+             .outerjoin(C, RC.id_camara == C.id)
+             .filter(RC.activo == True)
+             .order_by(RC.id.desc()))
+
+        total = q.count()
+        rows  = q.offset((page - 1) * page_size).limit(page_size).all()
+
+        items = []
         for cambio, nombre_sede, codigo_camara in rows:
             d = cambio.to_dict()
             d['nombre_sede']   = nombre_sede
             d['codigo_camara'] = codigo_camara
-            resultado.append(d)
-        return resultado
+            items.append(d)
+        return {'items': items, 'total': total, 'page': page, 'page_size': page_size, 'total_pages': max(1, -(-total // page_size))}
 
     def cctv_crear_cambio(self, data: dict) -> dict:
         m      = self._cctv_models()
@@ -5715,12 +5720,21 @@ class Querys:
 
     # ── Revisiones ─────────────────────────────────────────────────────────────
 
-    def cctv_listar_revisiones(self):
+    def cctv_listar_revisiones(self, filtros: dict = {}):
         m = self._cctv_models()
-        rows = (self.db.query(m['Revisiones'])
-                .filter(m['Revisiones'].activo == True)
-                .order_by(m['Revisiones'].fecha_creacion.desc()).limit(100).all())
-        result = []
+        R = m['Revisiones']
+
+        page      = max(1, int(filtros.get('page') or 1))
+        page_size = max(1, int(filtros.get('page_size') or 15))
+
+        q = (self.db.query(R)
+             .filter(R.activo == True)
+             .order_by(R.id.desc()))
+
+        total = q.count()
+        rows  = q.offset((page - 1) * page_size).limit(page_size).all()
+
+        items = []
         for r in rows:
             d = r.to_dict()
             if r.id_sede:
@@ -5733,8 +5747,8 @@ class Querys:
                 d['nombre_responsable'] = resp.nombre if resp else None
             else:
                 d['nombre_responsable'] = None
-            result.append(d)
-        return result
+            items.append(d)
+        return {'items': items, 'total': total, 'page': page, 'page_size': page_size, 'total_pages': max(1, -(-total // page_size))}
 
     def cctv_crear_revision(self, data: dict) -> dict:
         m        = self._cctv_models()
@@ -5758,26 +5772,31 @@ class Querys:
         d['estado_valor']    = ei.valor  if ei else ''
         return d
 
-    def cctv_listar_incidentes(self):
+    def cctv_listar_incidentes(self, filtros: dict = {}):
         m  = self._cctv_models()
         I  = m['Incidentes']
         S  = m['Sedes']
         C  = m['Camaras']
 
-        rows = (self.db.query(I, S.nombre, C.codigo_equipo_grabacion)
-                .outerjoin(S, I.id_sede   == S.id)
-                .outerjoin(C, I.id_camara == C.id)
-                .filter(I.activo == True)
-                .order_by(I.fecha_creacion.desc())
-                .limit(100).all())
+        page      = max(1, int(filtros.get('page') or 1))
+        page_size = max(1, int(filtros.get('page_size') or 15))
 
-        resultado = []
+        q = (self.db.query(I, S.nombre, C.codigo_equipo_grabacion)
+             .outerjoin(S, I.id_sede   == S.id)
+             .outerjoin(C, I.id_camara == C.id)
+             .filter(I.activo == True)
+             .order_by(I.id.desc()))
+
+        total = q.count()
+        rows  = q.offset((page - 1) * page_size).limit(page_size).all()
+
+        items = []
         for inc, nombre_sede, codigo_camara in rows:
             d = self._enrich_incidente(inc, m)
             d['nombre_sede']   = nombre_sede
             d['codigo_camara'] = codigo_camara
-            resultado.append(d)
-        return resultado
+            items.append(d)
+        return {'items': items, 'total': total, 'page': page, 'page_size': page_size, 'total_pages': max(1, -(-total // page_size))}
 
     def cctv_crear_incidente(self, data: dict) -> dict:
         m         = self._cctv_models()

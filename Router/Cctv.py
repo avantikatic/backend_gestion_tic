@@ -156,8 +156,8 @@ def eliminar_cargo(data: dict = Body(...), db: Session = Depends(get_db)):
 # ── REGISTROS DE CAMBIOS ──────────────────────────────────────────────────────
 
 @cctv_router.post('/listar_cambios', tags=["CCTV"], response_model=dict)
-def listar_cambios(db: Session = Depends(get_db)):
-    return Cctv(db).listar_cambios()
+def listar_cambios(data: dict = Body(default={}), db: Session = Depends(get_db)):
+    return Cctv(db).listar_cambios(data)
 
 
 @cctv_router.post('/crear_cambio', tags=["CCTV"], response_model=dict)
@@ -179,8 +179,8 @@ def crear_cambio(data: dict = Body(...), db: Session = Depends(get_db)):
 # ── REVISIONES ────────────────────────────────────────────────────────────────
 
 @cctv_router.post('/listar_revisiones', tags=["CCTV"], response_model=dict)
-def listar_revisiones(db: Session = Depends(get_db)):
-    return Cctv(db).listar_revisiones()
+def listar_revisiones(data: dict = Body(default={}), db: Session = Depends(get_db)):
+    return Cctv(db).listar_revisiones(data)
 
 
 @cctv_router.post('/crear_revision', tags=["CCTV"], response_model=dict)
@@ -206,8 +206,8 @@ def crear_revision(data: dict = Body(...), db: Session = Depends(get_db)):
 # ── INCIDENTES ────────────────────────────────────────────────────────────────
 
 @cctv_router.post('/listar_incidentes', tags=["CCTV"], response_model=dict)
-def listar_incidentes(db: Session = Depends(get_db)):
-    return Cctv(db).listar_incidentes()
+def listar_incidentes(data: dict = Body(default={}), db: Session = Depends(get_db)):
+    return Cctv(db).listar_incidentes(data)
 
 
 @cctv_router.post('/crear_incidente', tags=["CCTV"], response_model=dict)

@@ -145,9 +145,9 @@ class Cctv:
 
     # ── Registros de cambios ───────────────────────────────────────────────────
 
-    def listar_cambios(self):
+    def listar_cambios(self, filtros: dict = {}):
         try:
-            data = self.querys.cctv_listar_cambios()
+            data = self.querys.cctv_listar_cambios(filtros)
             return self.tools.output(200, "Cambios obtenidos.", data)
         except Exception as e:
             print(f"[Cctv] listar_cambios: {e}")
@@ -165,9 +165,9 @@ class Cctv:
 
     # ── Revisiones ─────────────────────────────────────────────────────────────
 
-    def listar_revisiones(self):
+    def listar_revisiones(self, filtros: dict = {}):
         try:
-            data = self.querys.cctv_listar_revisiones()
+            data = self.querys.cctv_listar_revisiones(filtros)
             return self.tools.output(200, "Revisiones obtenidas.", data)
         except Exception as e:
             print(f"[Cctv] listar_revisiones: {e}")
@@ -185,9 +185,9 @@ class Cctv:
 
     # ── Incidentes ─────────────────────────────────────────────────────────────
 
-    def listar_incidentes(self):
+    def listar_incidentes(self, filtros: dict = {}):
         try:
-            data = self.querys.cctv_listar_incidentes()
+            data = self.querys.cctv_listar_incidentes(filtros)
             return self.tools.output(200, "Incidentes obtenidos.", data)
         except Exception as e:
             print(f"[Cctv] listar_incidentes: {e}")
