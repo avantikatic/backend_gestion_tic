@@ -9,8 +9,8 @@ class IntranetCctvRevisiones(BASE):
 
     id                      = Column(Integer, primary_key=True, autoincrement=True)
     id_sede                 = Column(Integer, ForeignKey('intranet_cctv_sedes.id'), nullable=True)
+    id_responsable          = Column(Integer, ForeignKey('intranet_cctv_responsables_tic.id'), nullable=True)
     fecha_revision          = Column(String(20), nullable=False)
-    cargo_revisor           = Column(String(200), nullable=True)
     camaras_activas         = Column(Integer, default=0, nullable=True)
     camaras_mantenimiento   = Column(Integer, default=0, nullable=True)
     camaras_inactivas       = Column(Integer, default=0, nullable=True)
@@ -28,8 +28,8 @@ class IntranetCctvRevisiones(BASE):
 
     def __init__(self, data: dict):
         self.id_sede                 = data.get('id_sede') or None
+        self.id_responsable          = data.get('id_responsable') or None
         self.fecha_revision          = data.get('fecha_revision')
-        self.cargo_revisor           = data.get('cargo_revisor')
         self.camaras_activas         = int(data.get('camaras_activas') or 0)
         self.camaras_mantenimiento   = int(data.get('camaras_mantenimiento') or 0)
         self.camaras_inactivas       = int(data.get('camaras_inactivas') or 0)
@@ -46,8 +46,8 @@ class IntranetCctvRevisiones(BASE):
         return {
             'id_revision':              self.id,
             'id_sede':                  self.id_sede,
+            'id_responsable':           self.id_responsable,
             'fecha_revision':           self.fecha_revision,
-            'cargo_revisor':            self.cargo_revisor,
             'camaras_activas':          self.camaras_activas,
             'camaras_mantenimiento':    self.camaras_mantenimiento,
             'camaras_inactivas':        self.camaras_inactivas,

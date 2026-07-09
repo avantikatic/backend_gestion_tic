@@ -5404,6 +5404,7 @@ class Querys:
         from Models.IntranetCctvNivelesAccesoModel      import IntranetCctvNivelesAcceso
         from Models.IntranetCctvSeveridadesModel        import IntranetCctvSeveridades
         from Models.IntranetCctvEstadosIncidenteModel   import IntranetCctvEstadosIncidente
+        from Models.IntranetCctvResponsablesTicModel    import IntranetCctvResponsablesTic
         return {
             'Sedes':             IntranetCctvSedes,
             'Camaras':           IntranetCctvCamaras,
@@ -5416,6 +5417,7 @@ class Querys:
             'NivelesAcceso':     IntranetCctvNivelesAcceso,
             'Severidades':       IntranetCctvSeveridades,
             'EstadosIncidente':  IntranetCctvEstadosIncidente,
+            'ResponsablesTic':   IntranetCctvResponsablesTic,
         }
 
     # ── Catálogos ──────────────────────────────────────────────────────────────
@@ -5431,6 +5433,7 @@ class Querys:
             'niveles_acceso':    _cat(m['NivelesAcceso']),
             'severidades':       _cat(m['Severidades']),
             'estados_incidente': _cat(m['EstadosIncidente']),
+            'responsables_tic':  _cat(m['ResponsablesTic']),
         }
 
     # ── Dashboard ──────────────────────────────────────────────────────────────
@@ -5725,6 +5728,11 @@ class Querys:
                 d['nombre_sede'] = sede.nombre if sede else None
             else:
                 d['nombre_sede'] = None
+            if r.id_responsable:
+                resp = self.db.query(m['ResponsablesTic']).filter(m['ResponsablesTic'].id == r.id_responsable).first()
+                d['nombre_responsable'] = resp.nombre if resp else None
+            else:
+                d['nombre_responsable'] = None
             result.append(d)
         return result
 
