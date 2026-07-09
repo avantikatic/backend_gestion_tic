@@ -12,7 +12,6 @@ class IntranetCctvSedes(BASE):
     ubicacion_general            = Column(String(300), nullable=True)
     responsable_operativo        = Column(String(200), nullable=True)
     sistema_grabacion            = Column(String(200), nullable=True)
-    dias_almacenamiento_estimado = Column(Integer, default=0, nullable=True)
     codigo_activo                = Column(String(100), nullable=True)
     observaciones                = Column(Text, nullable=True)
 
@@ -27,7 +26,6 @@ class IntranetCctvSedes(BASE):
         self.ubicacion_general            = data.get('ubicacion_general')
         self.responsable_operativo        = data.get('responsable_operativo')
         self.sistema_grabacion            = data.get('sistema_grabacion')
-        self.dias_almacenamiento_estimado = int(data.get('dias_almacenamiento_estimado') or 0)
         self.codigo_activo                = data.get('codigo_activo')
         self.observaciones                = data.get('observaciones')
         self.usuario_creacion             = data.get('usuario_creacion')
@@ -41,7 +39,6 @@ class IntranetCctvSedes(BASE):
             'ubicacion_general':            self.ubicacion_general,
             'responsable_operativo':        self.responsable_operativo,
             'sistema_grabacion':            self.sistema_grabacion,
-            'dias_almacenamiento_estimado': self.dias_almacenamiento_estimado,
             'codigo_activo':                self.codigo_activo,
             'observaciones':                self.observaciones,
             'activo':                       self.activo,

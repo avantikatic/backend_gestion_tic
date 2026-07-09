@@ -5440,12 +5440,10 @@ class Querys:
         S = m['Sedes']
         C = m['Camaras']
 
-        total_sedes   = self.db.query(S).filter(S.activo == True).count()
-        total_camaras = self.db.query(C).filter(C.activo == True).count()
-        dias_total    = self.db.query(func.sum(C.dias_almacenamiento)).filter(C.activo == True).scalar() or 0
-        total_cargos  = self.db.query(m['Cargos']).filter(m['Cargos'].activo == True).count()
+        total_sedes  = self.db.query(S).filter(S.activo == True).count()
+        total_cargos = self.db.query(m['Cargos']).filter(m['Cargos'].activo == True).count()
 
-        sedes   = self.db.query(S).filter(S.activo == True).order_by(S.nombre).all()
+        sedes    = self.db.query(S).filter(S.activo == True).order_by(S.nombre).all()
         por_sede = []
         for sede in sedes:
             camaras = self.db.query(C).filter(C.id_sede == sede.id, C.activo == True).all()
@@ -5454,16 +5452,13 @@ class Querys:
                 'nombre':              sede.nombre,
                 'ubicacion_general':   sede.ubicacion_general,
                 'camaras':             len(camaras),
-                'dias_almacenamiento': sede.dias_almacenamiento_estimado,
-                'dias_backup':         sum(c.dias_retencion_backup or 0 for c in camaras),
+                'dias_almacenamiento': sum(c.dias_almacenamiento or 0 for c in camaras),
             })
 
         return {
             'totales': {
-                'sedes':               total_sedes,
-                'camaras':             total_camaras,
-                'dias_almacenamiento': int(dias_total),
-                'cargos_autorizados':  total_cargos,
+                'sedes':              total_sedes,
+                'cargos_autorizados': total_cargos,
             },
             'por_sede': por_sede,
         }
@@ -5492,7 +5487,7 @@ class Querys:
         if not sede:
             return None
         campos = ['nombre', 'ubicacion_general', 'responsable_operativo',
-                  'sistema_grabacion', 'dias_almacenamiento_estimado', 'codigo_activo',
+                  'sistema_grabacion', 'codigo_activo',
                   'observaciones', 'usuario_actualizacion']
         for campo in campos:
             if campo in data:
@@ -5549,8 +5544,20 @@ class Querys:
                 S.nombre.ilike(term),
             ))
 
-        q = q.order_by(S.nombre, C.codigo_equipo_grabacion)
-        return [self._enrich_camara(c, m) for c in q.all()]
+        q = q.order_by(C.id.asc())
+
+        page      = max(1, int(filtros.get('page') or 1))
+        page_size = max(1, int(filtros.get('page_size') or 15))
+        total     = q.count()
+        items     = q.offset((page - 1) * page_size).limit(page_size).all()
+
+        return {
+            'items':       [self._enrich_camara(c, m) for c in items],
+            'total':       total,
+            'page':        page,
+            'page_size':   page_size,
+            'total_pages': max(1, -(-total // page_size)),
+        }
 
     def cctv_crear_camara(self, data: dict) -> dict:
         import re
@@ -5583,7 +5590,7 @@ class Querys:
             return None
         campos = ['id_sede', 'codigo_equipo_grabacion', 'ubicacion_fisica',
                   'id_estado_camara', 'dias_almacenamiento', 'id_metodo_backup',
-                  'dias_retencion_backup', 'fecha_instalacion_actualizacion',
+                  'fecha_instalacion_actualizacion',
                   'observaciones', 'usuario_actualizacion']
         for campo in campos:
             if campo in data:
