@@ -5714,9 +5714,19 @@ class Querys:
 
     def cctv_listar_revisiones(self):
         m = self._cctv_models()
-        return [r.to_dict() for r in
-                self.db.query(m['Revisiones']).filter(m['Revisiones'].activo == True)
-                .order_by(m['Revisiones'].fecha_creacion.desc()).limit(100).all()]
+        rows = (self.db.query(m['Revisiones'])
+                .filter(m['Revisiones'].activo == True)
+                .order_by(m['Revisiones'].fecha_creacion.desc()).limit(100).all())
+        result = []
+        for r in rows:
+            d = r.to_dict()
+            if r.id_sede:
+                sede = self.db.query(m['Sedes']).filter(m['Sedes'].id == r.id_sede).first()
+                d['nombre_sede'] = sede.nombre if sede else None
+            else:
+                d['nombre_sede'] = None
+            result.append(d)
+        return result
 
     def cctv_crear_revision(self, data: dict) -> dict:
         m        = self._cctv_models()

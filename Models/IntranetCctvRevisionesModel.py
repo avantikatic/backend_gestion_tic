@@ -1,5 +1,5 @@
 from Config.db import BASE
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, Text
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, Text, ForeignKey
 from datetime import datetime
 
 
@@ -8,6 +8,7 @@ class IntranetCctvRevisiones(BASE):
     __tablename__ = "intranet_cctv_revisiones"
 
     id                      = Column(Integer, primary_key=True, autoincrement=True)
+    id_sede                 = Column(Integer, ForeignKey('intranet_cctv_sedes.id'), nullable=True)
     fecha_revision          = Column(String(20), nullable=False)
     cargo_revisor           = Column(String(200), nullable=True)
     camaras_activas         = Column(Integer, default=0, nullable=True)
@@ -26,6 +27,7 @@ class IntranetCctvRevisiones(BASE):
     usuario_actualizacion = Column(String(100), nullable=True)
 
     def __init__(self, data: dict):
+        self.id_sede                 = data.get('id_sede') or None
         self.fecha_revision          = data.get('fecha_revision')
         self.cargo_revisor           = data.get('cargo_revisor')
         self.camaras_activas         = int(data.get('camaras_activas') or 0)
@@ -43,6 +45,7 @@ class IntranetCctvRevisiones(BASE):
     def to_dict(self):
         return {
             'id_revision':              self.id,
+            'id_sede':                  self.id_sede,
             'fecha_revision':           self.fecha_revision,
             'cargo_revisor':            self.cargo_revisor,
             'camaras_activas':          self.camaras_activas,
