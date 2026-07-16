@@ -1434,14 +1434,17 @@ class Querys:
                      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
             # 1. Tickets completados por mes
+            # Se agrupa por fecha_vencimiento (no por fecha_cierre) para que cada ticket
+            # pertenezca al mes en que vencía. Así un ticket cerrado tarde en Julio pero
+            # que vencía en Marzo queda como no-oportuno de Marzo, no de Julio.
             completados_q = self.db.query(
-                extract('month', CorreosMicrosoftModel.fecha_cierre).label('mes'),
+                extract('month', CorreosMicrosoftModel.fecha_vencimiento).label('mes'),
                 func.count().label('total_completados'),
                 func.sum(case(
-                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, cast(CorreosMicrosoftModel.fecha_cierre, Date) <= cast(CorreosMicrosoftModel.fecha_vencimiento, Date)), 1),
+                    (cast(CorreosMicrosoftModel.fecha_cierre, Date) <= cast(CorreosMicrosoftModel.fecha_vencimiento, Date), 1),
                     else_=0)).label('oportunos'),
                 func.sum(case(
-                    (and_(CorreosMicrosoftModel.fecha_vencimiento != None, cast(CorreosMicrosoftModel.fecha_cierre, Date) > cast(CorreosMicrosoftModel.fecha_vencimiento, Date)), 1),
+                    (cast(CorreosMicrosoftModel.fecha_cierre, Date) > cast(CorreosMicrosoftModel.fecha_vencimiento, Date), 1),
                     else_=0)).label('no_oportunos'),
                 func.sum(case(
                     (CorreosMicrosoftModel.fecha_vencimiento == None, 1),
@@ -1452,8 +1455,9 @@ class Querys:
                 CorreosMicrosoftModel.estado == 3,
                 CorreosMicrosoftModel.tipo_ticket == 1,
                 CorreosMicrosoftModel.fecha_cierre != None,
-                func.extract('year', CorreosMicrosoftModel.fecha_cierre) == anio
-            ).group_by(extract('month', CorreosMicrosoftModel.fecha_cierre))
+                CorreosMicrosoftModel.fecha_vencimiento != None,
+                func.extract('year', CorreosMicrosoftModel.fecha_vencimiento) == anio
+            ).group_by(extract('month', CorreosMicrosoftModel.fecha_vencimiento))
 
             completados = {int(row.mes): {
                 'total_completados': row.total_completados,
